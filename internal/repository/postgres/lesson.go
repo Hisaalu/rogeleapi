@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Hisaalu/rogele/internal/dberr"
 	"github.com/Hisaalu/rogele/internal/domain"
 	"github.com/Hisaalu/rogele/internal/repository"
 )
@@ -37,7 +38,11 @@ func (r *LessonRepo) Create(ctx context.Context, l *domain.Lesson) (*domain.Less
 		l.Title, l.Content, l.SubjectID, l.ClassID, l.TeacherID,
 		l.VideoURL, l.Duration, l.IsPublished, l.IsApproved,
 	)
-	return scanLesson(row)
+	result, err := scanLesson(row)
+	if err != nil {
+		return nil, dberr.Translate(err)
+	}
+	return result, nil
 }
 
 func (r *LessonRepo) GetByID(ctx context.Context, id int64) (*domain.Lesson, error) {
@@ -64,7 +69,7 @@ func (r *LessonRepo) Update(ctx context.Context, l *domain.Lesson) error {
 		l.VideoURL, l.Duration, l.IsPublished, l.IsApproved, l.ID,
 	)
 	if err != nil {
-		return fmt.Errorf("update lesson: %w", err)
+		return dberr.Translate(fmt.Errorf("update lesson: %w", err))
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
@@ -76,7 +81,7 @@ func (r *LessonRepo) Update(ctx context.Context, l *domain.Lesson) error {
 func (r *LessonRepo) Delete(ctx context.Context, id int64) error {
 	res, err := r.db.ExecContext(ctx, `DELETE FROM lessons WHERE id = $1`, id)
 	if err != nil {
-		return fmt.Errorf("delete lesson: %w", err)
+		return dberr.Translate(fmt.Errorf("delete lesson: %w", err))
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
@@ -195,13 +200,17 @@ func (r *LessonRepo) CreateMaterial(ctx context.Context, m *domain.LessonMateria
 	row := r.db.QueryRowContext(ctx, query,
 		m.LessonID, m.FileName, m.FilePath, m.FileType, m.FileSize,
 	)
-	return scanMaterial(row)
+	result, err := scanMaterial(row)
+	if err != nil {
+		return nil, dberr.Translate(err)
+	}
+	return result, nil
 }
 
 func (r *LessonRepo) DeleteMaterial(ctx context.Context, id int64) error {
 	res, err := r.db.ExecContext(ctx, `DELETE FROM lesson_materials WHERE id = $1`, id)
 	if err != nil {
-		return fmt.Errorf("delete material: %w", err)
+		return dberr.Translate(fmt.Errorf("delete material: %w", err))
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
@@ -224,7 +233,7 @@ func (r *LessonRepo) AddBookmark(ctx context.Context, b *domain.Bookmark) error 
 		`INSERT INTO bookmarks (user_id, lesson_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
 		b.UserID, b.LessonID,
 	)
-	return err
+	return dberr.Translate(err)
 }
 
 func (r *LessonRepo) RemoveBookmark(ctx context.Context, userID, lessonID int64) error {

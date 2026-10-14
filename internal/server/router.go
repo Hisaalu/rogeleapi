@@ -17,16 +17,18 @@ import (
 )
 
 type RouterDeps struct {
-	Log        *slog.Logger
-	Version    string
-	DB         *sql.DB
-	Repos      *repository.Repositories
-	Tokens     *auth.TokenManager
-	AuthSvc    *service.AuthService
-	UserSvc    *service.UserService
-	LessonSvc  *service.LessonService
-	CRUDConfig *crud.Config
-	CRUDRepo   *crud.Repository
+	Log         *slog.Logger
+	Version     string
+	DB          *sql.DB
+	Repos       *repository.Repositories
+	Tokens      *auth.TokenManager
+	AuthSvc     *service.AuthService
+	UserSvc     *service.UserService
+	LessonSvc   *service.LessonService
+	HomeworkSvc *service.HomeworkService
+	QuizSvc     *service.QuizService
+	CRUDConfig  *crud.Config
+	CRUDRepo    *crud.Repository
 }
 
 func NewRouter(deps RouterDeps) http.Handler {
@@ -43,12 +45,10 @@ func NewRouter(deps RouterDeps) http.Handler {
 
 	r.Route("/api/v1", func(r chi.Router) {
 		authHandler := handler.NewAuthHandler(deps.AuthSvc, deps.UserSvc, deps.Tokens, deps.Log)
-
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/register", authHandler.Register)
 			r.Post("/login", authHandler.Login)
 			r.Post("/refresh", authHandler.Refresh)
-
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.Authenticate(deps.Tokens))
 				r.Get("/me", authHandler.Me)
@@ -56,14 +56,11 @@ func NewRouter(deps RouterDeps) http.Handler {
 		})
 
 		lessonHandler := handler.NewLessonHandler(deps.LessonSvc, deps.Log)
-
 		r.Route("/lessons", func(r chi.Router) {
 			r.Use(middleware.Authenticate(deps.Tokens))
-
 			r.Get("/", lessonHandler.List)
 			r.Get("/bookmarks", lessonHandler.ListBookmarks)
 			r.Post("/", lessonHandler.Create)
-
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", lessonHandler.Get)
 				r.Patch("/", lessonHandler.Update)
@@ -71,11 +68,46 @@ func NewRouter(deps RouterDeps) http.Handler {
 				r.Post("/publish", lessonHandler.Publish)
 				r.Post("/approve", lessonHandler.Approve)
 				r.Post("/bookmark", lessonHandler.ToggleBookmark)
-
 				r.Get("/materials", lessonHandler.ListMaterials)
 				r.Post("/materials", lessonHandler.AddMaterial)
 				r.Delete("/materials/{materialId}", lessonHandler.DeleteMaterial)
 			})
+		})
+
+		homeworkHandler := handler.NewHomeworkHandler(deps.HomeworkSvc, deps.Log)
+		r.Route("/homework", func(r chi.Router) {
+			r.Use(middleware.Authenticate(deps.Tokens))
+			r.Get("/", homeworkHandler.List)
+			r.Get("/my-submissions", homeworkHandler.MySubmissions)
+			r.Post("/", homeworkHandler.Create)
+			r.Route("/{id}", func(r chi.Router) {
+				r.Get("/", homeworkHandler.Get)
+				r.Patch("/", homeworkHandler.Update)
+				r.Delete("/", homeworkHandler.Delete)
+				r.Post("/submit", homeworkHandler.Submit)
+				r.Get("/submissions", homeworkHandler.ListSubmissions)
+			})
+			r.Post("/submissions/{submissionId}/grade", homeworkHandler.Grade)
+		})
+
+		quizHandler := handler.NewQuizHandler(deps.QuizSvc, deps.Log)
+		r.Route("/quizzes", func(r chi.Router) {
+			r.Use(middleware.Authenticate(deps.Tokens))
+			r.Get("/", quizHandler.List)
+			r.Get("/my-attempts", quizHandler.ListMyAttempts)
+			r.Post("/", quizHandler.Create)
+			r.Route("/{id}", func(r chi.Router) {
+				r.Get("/", quizHandler.Get)
+				r.Patch("/", quizHandler.Update)
+				r.Delete("/", quizHandler.Delete)
+				r.Post("/approve", quizHandler.Approve)
+				r.Get("/questions", quizHandler.ListQuestions)
+				r.Post("/questions", quizHandler.AddQuestion)
+				r.Delete("/questions/{questionId}", quizHandler.DeleteQuestion)
+				r.Post("/attempts", quizHandler.StartAttempt)
+			})
+			r.Get("/attempts/{attemptId}", quizHandler.GetAttempt)
+			r.Post("/attempts/{attemptId}/submit", quizHandler.SubmitAttempt)
 		})
 
 		if deps.CRUDConfig != nil && deps.CRUDRepo != nil {

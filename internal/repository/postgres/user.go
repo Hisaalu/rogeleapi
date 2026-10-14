@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
+	"github.com/Hisaalu/rogele/internal/dberr"
 	"github.com/Hisaalu/rogele/internal/domain"
 	"github.com/Hisaalu/rogele/internal/repository"
 )
@@ -41,8 +41,11 @@ func (r *UserRepo) Create(ctx context.Context, u *domain.User) (*domain.User, er
 		u.Phone, u.Bio, u.Qualification, u.Specialization, u.Role, u.ClassID,
 		u.ProfilePhoto, u.IsActive, u.IsSuspended, u.EmailVerified,
 	)
-
-	return scanUser(row)
+	result, err := scanUser(row)
+	if err != nil {
+		return nil, dberr.Translate(err)
+	}
+	return result, nil
 }
 
 func (r *UserRepo) GetByID(ctx context.Context, id int64) (*domain.User, error) {
@@ -84,7 +87,7 @@ func (r *UserRepo) Update(ctx context.Context, u *domain.User) error {
 		u.EmailVerified, u.ID,
 	)
 	if err != nil {
-		return fmt.Errorf("update user: %w", err)
+		return dberr.Translate(fmt.Errorf("update user: %w", err))
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
@@ -96,7 +99,7 @@ func (r *UserRepo) Update(ctx context.Context, u *domain.User) error {
 func (r *UserRepo) Delete(ctx context.Context, id int64) error {
 	res, err := r.db.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, id)
 	if err != nil {
-		return fmt.Errorf("delete user: %w", err)
+		return dberr.Translate(fmt.Errorf("delete user: %w", err))
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
@@ -153,7 +156,7 @@ func (r *UserRepo) List(ctx context.Context, f repository.UserFilter) ([]*domain
 	}
 	defer rows.Close()
 
-	var users []*domain.User
+	users := make([]*domain.User, 0, 16)
 	for rows.Next() {
 		u, err := scanUserRow(rows)
 		if err != nil {
@@ -170,7 +173,7 @@ func (r *UserRepo) UpdateLastLogin(ctx context.Context, id int64) error {
 	return err
 }
 
-type rowScanner interface {
+type userRowScanner interface {
 	Scan(dest ...any) error
 }
 
@@ -182,7 +185,7 @@ func scanUser(row *sql.Row) (*domain.User, error) {
 	return u, err
 }
 
-func scanUserRow(s rowScanner) (*domain.User, error) {
+func scanUserRow(s userRowScanner) (*domain.User, error) {
 	var (
 		u              domain.User
 		lastLogin      sql.NullTime
@@ -247,5 +250,3 @@ func scanUserRow(s rowScanner) (*domain.User, error) {
 }
 
 var _ repository.UserRepository = (*UserRepo)(nil)
-
-var _ = time.Now

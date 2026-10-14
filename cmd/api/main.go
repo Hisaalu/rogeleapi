@@ -47,8 +47,10 @@ func run() error {
 	}()
 
 	repos := &repository.Repositories{
-		User:   postgres.NewUserRepo(database),
-		Lesson: postgres.NewLessonRepo(database),
+		User:     postgres.NewUserRepo(database),
+		Lesson:   postgres.NewLessonRepo(database),
+		Homework: postgres.NewHomeworkRepo(database),
+		Quiz:     postgres.NewQuizRepo(database),
 	}
 
 	tokenManager := auth.NewTokenManager(
@@ -60,6 +62,8 @@ func run() error {
 	authSvc := service.NewAuthService(repos.User, tokenManager)
 	userSvc := service.NewUserService(repos.User)
 	lessonSvc := service.NewLessonService(repos.Lesson, repos.User)
+	homeworkSvc := service.NewHomeworkService(repos.Homework, repos.User)
+	quizSvc := service.NewQuizService(repos.Quiz, repos.User)
 
 	crudConfig, err := crud.Load("./configs/resources.yaml")
 	if err != nil {
@@ -70,16 +74,18 @@ func run() error {
 	crudRepo := crud.NewRepository(database)
 
 	router := server.NewRouter(server.RouterDeps{
-		Log:        log,
-		Version:    version,
-		DB:         database,
-		Repos:      repos,
-		Tokens:     tokenManager,
-		AuthSvc:    authSvc,
-		UserSvc:    userSvc,
-		LessonSvc:  lessonSvc,
-		CRUDConfig: crudConfig,
-		CRUDRepo:   crudRepo,
+		Log:         log,
+		Version:     version,
+		DB:          database,
+		Repos:       repos,
+		Tokens:      tokenManager,
+		AuthSvc:     authSvc,
+		UserSvc:     userSvc,
+		LessonSvc:   lessonSvc,
+		HomeworkSvc: homeworkSvc,
+		QuizSvc:     quizSvc,
+		CRUDConfig:  crudConfig,
+		CRUDRepo:    crudRepo,
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.App.Port)

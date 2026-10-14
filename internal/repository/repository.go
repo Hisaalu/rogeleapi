@@ -53,7 +53,74 @@ type LessonRepository interface {
 	ListBookmarks(ctx context.Context, userID int64) ([]*domain.Lesson, error)
 }
 
+type HomeworkFilter struct {
+	TeacherID *int64
+	ClassID   *int64
+	SubjectID *int64
+	IsActive  *bool
+	Search    string
+	Limit     int
+	Offset    int
+}
+
+type HomeworkRepository interface {
+	Create(ctx context.Context, hw *domain.Homework) (*domain.Homework, error)
+	GetByID(ctx context.Context, id int64) (*domain.Homework, error)
+	Update(ctx context.Context, hw *domain.Homework) error
+	Delete(ctx context.Context, id int64) error
+	List(ctx context.Context, f HomeworkFilter) ([]*domain.Homework, error)
+
+	ListAttachments(ctx context.Context, homeworkID int64) ([]*domain.HomeworkAttachment, error)
+	CreateAttachment(ctx context.Context, a *domain.HomeworkAttachment) (*domain.HomeworkAttachment, error)
+	DeleteAttachment(ctx context.Context, id int64) error
+
+	CreateSubmission(ctx context.Context, s *domain.HomeworkSubmission) (*domain.HomeworkSubmission, error)
+	GetSubmissionByID(ctx context.Context, id int64) (*domain.HomeworkSubmission, error)
+	GetSubmission(ctx context.Context, homeworkID, studentID int64) (*domain.HomeworkSubmission, error)
+	ListSubmissions(ctx context.Context, homeworkID int64) ([]*domain.HomeworkSubmission, error)
+	ListSubmissionsByStudent(ctx context.Context, studentID int64) ([]*domain.HomeworkSubmission, error)
+	UpdateSubmission(ctx context.Context, s *domain.HomeworkSubmission) error
+	DeleteSubmission(ctx context.Context, id int64) error
+
+	ListSubmissionFiles(ctx context.Context, submissionID int64) ([]*domain.HomeworkSubmissionFile, error)
+	CreateSubmissionFile(ctx context.Context, f *domain.HomeworkSubmissionFile) (*domain.HomeworkSubmissionFile, error)
+	DeleteSubmissionFile(ctx context.Context, id int64) error
+}
+
+type QuizFilter struct {
+	TeacherID *int64
+	ClassID   *int64
+	SubjectID *int64
+	Published *bool
+	Limit     int
+	Offset    int
+}
+
+type QuizRepository interface {
+	Create(ctx context.Context, q *domain.Quiz) (*domain.Quiz, error)
+	GetByID(ctx context.Context, id int64) (*domain.Quiz, error)
+	Update(ctx context.Context, q *domain.Quiz) error
+	Delete(ctx context.Context, id int64) error
+	List(ctx context.Context, f QuizFilter) ([]*domain.Quiz, error)
+
+	ListQuestions(ctx context.Context, quizID int64) ([]*domain.QuizQuestion, error)
+	CreateQuestion(ctx context.Context, q *domain.QuizQuestion) (*domain.QuizQuestion, error)
+	DeleteQuestion(ctx context.Context, id int64) error
+
+	CreateAttempt(ctx context.Context, a *domain.QuizAttempt) (*domain.QuizAttempt, error)
+	GetAttempt(ctx context.Context, id int64) (*domain.QuizAttempt, error)
+	GetInProgressAttempt(ctx context.Context, quizID, userID int64) (*domain.QuizAttempt, error)
+	UpdateAttempt(ctx context.Context, a *domain.QuizAttempt) error
+	CountAttempts(ctx context.Context, quizID, userID int64) (int, error)
+	ListAttemptsByUser(ctx context.Context, userID int64) ([]*domain.QuizAttempt, error)
+
+	SaveAnswer(ctx context.Context, a *domain.QuizAttemptAnswer) error
+	ListAnswers(ctx context.Context, attemptID int64) ([]*domain.QuizAttemptAnswer, error)
+}
+
 type Repositories struct {
-	User   UserRepository
-	Lesson LessonRepository
+	User     UserRepository
+	Lesson   LessonRepository
+	Homework HomeworkRepository
+	Quiz     QuizRepository
 }
