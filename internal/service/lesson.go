@@ -30,10 +30,11 @@ type UpdateLessonInput struct {
 
 type LessonService struct {
 	lessons repository.LessonRepository
+	users   repository.UserRepository
 }
 
-func NewLessonService(lessons repository.LessonRepository) *LessonService {
-	return &LessonService{lessons: lessons}
+func NewLessonService(lessons repository.LessonRepository, users repository.UserRepository) *LessonService {
+	return &LessonService{lessons: lessons, users: users}
 }
 
 func (s *LessonService) Create(ctx context.Context, teacherID int64, in CreateLessonInput) (*domain.Lesson, error) {
@@ -60,7 +61,7 @@ func (s *LessonService) GetByID(ctx context.Context, id int64, actor ActorContex
 	if err != nil {
 		return nil, err
 	}
-	if err := canViewLesson(l, actor); err != nil {
+	if err := s.canViewLesson(ctx, l, actor); err != nil {
 		return nil, err
 	}
 	if actor.Role == domain.RoleLearner {
@@ -78,6 +79,14 @@ func (s *LessonService) List(ctx context.Context, actor ActorContext, f reposito
 	case domain.RoleLearner, domain.RoleExternal:
 		pub := true
 		f.PublishedAt = &pub
+		classID, err := s.learnerClassID(ctx, actor)
+		if err != nil {
+			return nil, err
+		}
+		if classID == nil {
+			return []*domain.Lesson{}, nil
+		}
+		f.ClassID = classID
 	default:
 		return nil, domain.ErrForbidden
 	}
@@ -191,7 +200,7 @@ func (s *LessonService) ListMaterials(ctx context.Context, lessonID int64, actor
 	if err != nil {
 		return nil, err
 	}
-	if err := canViewLesson(l, actor); err != nil {
+	if err := s.canViewLesson(ctx, l, actor); err != nil {
 		return nil, err
 	}
 	return s.lessons.ListMaterials(ctx, lessonID)
@@ -216,12 +225,15 @@ func (s *LessonService) DeleteMaterial(ctx context.Context, materialID int64, ac
 	return s.lessons.DeleteMaterial(ctx, materialID)
 }
 
-type ActorContext struct {
-	UserID int64
-	Role   domain.UserRole
+func (s *LessonService) learnerClassID(ctx context.Context, actor ActorContext) (*int64, error) {
+	u, err := s.users.GetByID(ctx, actor.UserID)
+	if err != nil {
+		return nil, err
+	}
+	return u.ClassID, nil
 }
 
-func canViewLesson(l *domain.Lesson, actor ActorContext) error {
+func (s *LessonService) canViewLesson(ctx context.Context, l *domain.Lesson, actor ActorContext) error {
 	switch actor.Role {
 	case domain.RoleAdmin:
 		return nil
@@ -234,12 +246,24 @@ func canViewLesson(l *domain.Lesson, actor ActorContext) error {
 		}
 		return fmt.Errorf("%w: teachers can only view their own unpublished lessons", domain.ErrForbidden)
 	case domain.RoleLearner, domain.RoleExternal:
-		if l.IsPublished {
-			return nil
+		if !l.IsPublished {
+			return fmt.Errorf("%w: lesson is not published", domain.ErrForbidden)
 		}
-		return fmt.Errorf("%w: lesson is not published", domain.ErrForbidden)
+		classID, err := s.learnerClassID(ctx, actor)
+		if err != nil {
+			return err
+		}
+		if classID == nil || l.ClassID == nil || *classID != *l.ClassID {
+			return fmt.Errorf("%w: lesson is not for your class", domain.ErrForbidden)
+		}
+		return nil
 	}
 	return domain.ErrForbidden
+}
+
+type ActorContext struct {
+	UserID int64
+	Role   domain.UserRole
 }
 
 func canEditLesson(l *domain.Lesson, actor ActorContext) error {

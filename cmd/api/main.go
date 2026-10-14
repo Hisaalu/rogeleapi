@@ -59,7 +59,7 @@ func run() error {
 
 	authSvc := service.NewAuthService(repos.User, tokenManager)
 	userSvc := service.NewUserService(repos.User)
-	lessonSvc := service.NewLessonService(repos.Lesson)
+	lessonSvc := service.NewLessonService(repos.Lesson, repos.User)
 
 	crudConfig, err := crud.Load("./configs/resources.yaml")
 	if err != nil {
