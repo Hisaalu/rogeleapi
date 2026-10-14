@@ -7,6 +7,7 @@ import (
 
 	"github.com/Hisaalu/rogele/internal/auth"
 	"github.com/Hisaalu/rogele/internal/config"
+	"github.com/Hisaalu/rogele/internal/crud"
 	"github.com/Hisaalu/rogele/internal/db"
 	"github.com/Hisaalu/rogele/internal/logger"
 	"github.com/Hisaalu/rogele/internal/repository"
@@ -58,14 +59,24 @@ func run() error {
 	authSvc := service.NewAuthService(repos.User, tokenManager)
 	userSvc := service.NewUserService(repos.User)
 
+	crudConfig, err := crud.Load("./configs/resources.yaml")
+	if err != nil {
+		return fmt.Errorf("load crud config: %w", err)
+	}
+	log.Info("crud resources loaded", "count", len(crudConfig.Resources))
+
+	crudRepo := crud.NewRepository(database)
+
 	router := server.NewRouter(server.RouterDeps{
-		Log:     log,
-		Version: version,
-		DB:      database,
-		Repos:   repos,
-		Tokens:  tokenManager,
-		AuthSvc: authSvc,
-		UserSvc: userSvc,
+		Log:        log,
+		Version:    version,
+		DB:         database,
+		Repos:      repos,
+		Tokens:     tokenManager,
+		AuthSvc:    authSvc,
+		UserSvc:    userSvc,
+		CRUDConfig: crudConfig,
+		CRUDRepo:   crudRepo,
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.App.Port)

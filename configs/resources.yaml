@@ -1,0 +1,86 @@
+resources:
+  - name: settings
+    table: settings
+    primary_key: id
+    searchable: [setting_key, setting_value]
+    filterable: [setting_key]
+    default_sort: [-created_at]
+    read_roles: [admin, teacher, learner, external]
+    write_roles: [admin]
+    columns:
+      setting_key:   { type: string, writable: true, required: true }
+      setting_value: { type: string, writable: true }
+
+  - name: subscription-plans
+    table: subscription_plans
+    primary_key: id
+    searchable: [name, description]
+    filterable: [is_active]
+    default_sort: [price]
+    read_roles: [admin, teacher, learner, external]
+    write_roles: [admin]
+    columns:
+      name:          { type: string,  writable: true, required: true }
+      description:   { type: string,  writable: true }
+      price:         { type: number,  writable: true, required: true }
+      duration_days: { type: integer, writable: true, required: true }
+      is_active:     { type: boolean, writable: true }
+
+  - name: classes
+    table: classes
+    primary_key: id
+    searchable: [name, level]
+    filterable: [level, is_active]
+    default_sort: [name]
+    read_roles: [admin, teacher, learner, external]
+    write_roles: [admin]
+    columns:
+      name:        { type: string,  writable: true, required: true }
+      level:       { type: string,  writable: true, required: true }
+      description: { type: string,  writable: true }
+      is_active:   { type: boolean, writable: true }
+
+  - name: subjects
+    table: subjects
+    primary_key: id
+    searchable: [name, code, description]
+    filterable: [class_id, teacher_id, is_active]
+    default_sort: [name]
+    read_roles: [admin, teacher, learner, external]
+    write_roles: [admin, teacher]
+    columns:
+      name:        { type: string,  writable: true, required: true }
+      code:        { type: string,  writable: true }
+      description: { type: string,  writable: true }
+      class_id:    { type: integer, writable: true }
+      teacher_id:  { type: integer, writable: true }
+      is_active:   { type: boolean, writable: true }
+
+  - name: email-templates
+    table: email_templates
+    primary_key: id
+    searchable: [name, subject]
+    filterable: [created_by]
+    default_sort: [-created_at]
+    read_roles: [admin]
+    write_roles: [admin]
+    columns:
+      name:       { type: string, writable: true, required: true }
+      subject:    { type: string, writable: true, required: true }
+      body:       { type: string, writable: true, required: true }
+      created_by: { type: integer, writable: true }
+
+  - name: notifications
+    table: notifications
+    primary_key: id
+    searchable: [title, message]
+    filterable: [type, is_read]
+    default_sort: [-created_at]
+    read_roles: [admin, teacher, learner, external]
+    write_roles: [admin]
+    columns:
+      type:    { type: string,  writable: true, required: true }
+      title:   { type: string,  writable: true, required: true }
+      message: { type: string,  writable: true, required: true }
+      link:    { type: string,  writable: true }
+      is_read: { type: boolean, writable: true }

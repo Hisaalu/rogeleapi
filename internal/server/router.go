@@ -9,6 +9,7 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/Hisaalu/rogele/internal/auth"
+	"github.com/Hisaalu/rogele/internal/crud"
 	"github.com/Hisaalu/rogele/internal/handler"
 	"github.com/Hisaalu/rogele/internal/repository"
 	"github.com/Hisaalu/rogele/internal/server/middleware"
@@ -16,13 +17,15 @@ import (
 )
 
 type RouterDeps struct {
-	Log     *slog.Logger
-	Version string
-	DB      *sql.DB
-	Repos   *repository.Repositories
-	Tokens  *auth.TokenManager
-	AuthSvc *service.AuthService
-	UserSvc *service.UserService
+	Log        *slog.Logger
+	Version    string
+	DB         *sql.DB
+	Repos      *repository.Repositories
+	Tokens     *auth.TokenManager
+	AuthSvc    *service.AuthService
+	UserSvc    *service.UserService
+	CRUDConfig *crud.Config
+	CRUDRepo   *crud.Repository
 }
 
 func NewRouter(deps RouterDeps) http.Handler {
@@ -50,6 +53,10 @@ func NewRouter(deps RouterDeps) http.Handler {
 				r.Get("/me", authHandler.Me)
 			})
 		})
+
+		if deps.CRUDConfig != nil && deps.CRUDRepo != nil {
+			crud.Mount(r, deps.CRUDConfig, deps.CRUDRepo, deps.Tokens, deps.Log)
+		}
 	})
 
 	return r

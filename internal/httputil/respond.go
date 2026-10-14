@@ -18,6 +18,18 @@ type ErrorBody struct {
 	Message string `json:"message"`
 }
 
+type ListMeta struct {
+	Page     int   `json:"page"`
+	PerPage  int   `json:"per_page"`
+	Total    int64 `json:"total"`
+	LastPage int64 `json:"last_page"`
+}
+
+type ListResponse struct {
+	Data any      `json:"data"`
+	Meta ListMeta `json:"meta"`
+}
+
 func JSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
@@ -62,8 +74,12 @@ func DomainError(w http.ResponseWriter, err error, log *slog.Logger) {
 func DecodeJSON(r *http.Request, v any) error {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(v); err != nil {
-		return err
+	return dec.Decode(v)
+}
+
+func List(w http.ResponseWriter, data any, meta ListMeta) {
+	if meta.PerPage > 0 && meta.Total >= 0 {
+		meta.LastPage = (meta.Total + int64(meta.PerPage) - 1) / int64(meta.PerPage)
 	}
-	return nil
+	JSON(w, http.StatusOK, ListResponse{Data: data, Meta: meta})
 }
