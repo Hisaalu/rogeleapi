@@ -1,0 +1,20 @@
+app:
+  name: rogele
+  env: development
+  port: 8080
+
+database:
+  driver: postgres
+  host: 127.0.0.1
+  port: 5433
+  user: postgres
+  password: ""
+  name: rogeledb
+  sslmode: disable
+  max_open_conns: 25
+  max_idle_conns: 5
+
+jwt:
+  secret: ""
+  access_ttl: 15m
+  refresh_ttl: 168h
