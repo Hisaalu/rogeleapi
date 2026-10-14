@@ -40,3 +40,9 @@ r2:
   bucket: ""
   public_url: ""
   endpoint: ""
+
+email:
+  resend_api_key: ""
+  from: ""
+  reply_to: ""
+  web_base_url: ""

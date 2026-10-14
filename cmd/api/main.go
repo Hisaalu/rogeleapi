@@ -3,14 +3,17 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/Hisaalu/rogele/internal/auth"
 	"github.com/Hisaalu/rogele/internal/config"
 	"github.com/Hisaalu/rogele/internal/crud"
 	"github.com/Hisaalu/rogele/internal/db"
+	"github.com/Hisaalu/rogele/internal/domain"
 	"github.com/Hisaalu/rogele/internal/handler"
 	"github.com/Hisaalu/rogele/internal/logger"
+	"github.com/Hisaalu/rogele/internal/mailer"
 	"github.com/Hisaalu/rogele/internal/payments"
 	"github.com/Hisaalu/rogele/internal/repository"
 	"github.com/Hisaalu/rogele/internal/repository/postgres"
@@ -37,7 +40,8 @@ func run() error {
 	log := logger.New(cfg.App.Env)
 	log.Info("starting rogele api", "env", cfg.App.Env, "version", version)
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	database, err := db.NewPostgres(ctx, cfg.Database, log)
 	if err != nil {
@@ -60,12 +64,30 @@ func run() error {
 	}
 
 	planRepo := postgres.NewPlanRepo(database)
+	emailRepo := postgres.NewEmailRepo(database)
 
 	tokenManager := auth.NewTokenManager(
 		cfg.JWT.Secret,
 		cfg.JWT.AccessTTL,
 		cfg.JWT.RefreshTTL,
 	)
+
+	var sender mailer.Sender
+	if cfg.Email.Enabled() {
+		sender = mailer.NewResendSender(cfg.Email.ResendAPIKey, cfg.Email.From, cfg.Email.ReplyTo)
+		log.Info("mailer enabled", "provider", "resend", "from", cfg.Email.From)
+	} else {
+		sender = mailer.NewNoopSender(log)
+		log.Warn("mailer using noop sender — emails will be logged, not sent")
+	}
+
+	mailerSvc := mailer.NewService(sender, emailRepo, log, cfg.App.Name, cfg.Email.WebBaseURL)
+
+	if err := seedEmailTemplates(ctx, emailRepo, log); err != nil {
+		log.Warn("email template seed failed", "error", err)
+	}
+
+	go mailerSvc.Run(ctx)
 
 	authSvc := service.NewAuthService(repos.User, tokenManager)
 	userSvc := service.NewUserService(repos.User)
@@ -121,4 +143,19 @@ func run() error {
 	srv := server.New(addr, router, log)
 
 	return srv.Run(ctx)
+}
+
+func seedEmailTemplates(ctx context.Context, repo *postgres.EmailRepo, log *slog.Logger) error {
+	for _, t := range mailer.DefaultTemplates {
+		_, err := repo.UpsertTemplate(ctx, &domain.EmailTemplate{
+			Name:    t.Name,
+			Subject: t.Subject,
+			Body:    t.Body,
+		})
+		if err != nil {
+			return fmt.Errorf("seed %q: %w", t.Name, err)
+		}
+	}
+	log.Info("email templates seeded", "count", len(mailer.DefaultTemplates))
+	return nil
 }

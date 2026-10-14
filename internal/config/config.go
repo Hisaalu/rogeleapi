@@ -19,6 +19,7 @@ type Config struct {
 	Momo     MomoConfig
 	Airtel   AirtelConfig
 	R2       R2Config
+	Email    EmailConfig
 }
 
 type AppConfig struct {
@@ -38,6 +39,17 @@ type DatabaseConfig struct {
 	MaxOpenConns    int
 	MaxIdleConns    int
 	ConnMaxLifetime time.Duration
+}
+
+type EmailConfig struct {
+	ResendAPIKey string
+	From         string
+	ReplyTo      string
+	WebBaseURL   string
+}
+
+func (e EmailConfig) Enabled() bool {
+	return e.ResendAPIKey != "" && e.From != ""
 }
 
 func (d DatabaseConfig) DSN() string {
@@ -162,12 +174,15 @@ func Load() (*Config, error) {
 
 	if cfg.App.Env == "development" {
 		fmt.Fprintf(os.Stderr,
-			"[config] env=%s db=%s:%d/%s user=%s max_open=%d max_idle=%d momo=%v airtel=%v r2=%v\n",
+			"[config] env=%s db=%s:%d/%s user=%s max_open=%d max_idle=%d momo=%v airtel=%v r2=%v email=%v\n",
 			cfg.App.Env,
 			cfg.Database.Host, cfg.Database.Port, cfg.Database.Name,
 			cfg.Database.User,
 			cfg.Database.MaxOpenConns, cfg.Database.MaxIdleConns,
-			cfg.Momo.Enabled(), cfg.Airtel.Enabled(), cfg.R2.Enabled(),
+			cfg.Momo.Enabled(),
+			cfg.Airtel.Enabled(),
+			cfg.R2.Enabled(),
+			cfg.Email.Enabled(),
 		)
 	}
 
@@ -206,6 +221,10 @@ func applyStringEnv(cfg *Config) {
 	set("ROGELEDB_R2_BUCKET", &cfg.R2.Bucket)
 	set("ROGELEDB_R2_PUBLIC_URL", &cfg.R2.PublicURL)
 	set("ROGELEDB_R2_ENDPOINT", &cfg.R2.Endpoint)
+	set("ROGELEDB_RESEND_API_KEY", &cfg.Email.ResendAPIKey)
+	set("ROGELEDB_EMAIL_FROM", &cfg.Email.From)
+	set("ROGELEDB_EMAIL_REPLY_TO", &cfg.Email.ReplyTo)
+	set("ROGELEDB_WEB_BASE_URL", &cfg.Email.WebBaseURL)
 }
 
 func applyIntEnv(cfg *Config) {

@@ -9,6 +9,8 @@
 .vscode/
 *.swp
 
+migrations/
+
 .DS_Store
 
 *.log
