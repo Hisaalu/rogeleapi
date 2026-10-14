@@ -546,4 +546,70 @@ func scanRecipients(rows *sql.Rows) ([]*domain.EmailRecipient, error) {
 	return out, rows.Err()
 }
 
+func (r *EmailRepo) CountPendingJobs(ctx context.Context, campaignID int64) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM email_queue
+		WHERE campaign_id = $1 AND status IN ('queued', 'sending')
+	`, campaignID).Scan(&n)
+	return n, err
+}
+
+func (r *EmailRepo) MarkCampaignCompleted(ctx context.Context, id int64) error {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE email_campaigns
+		SET status = CASE
+			WHEN sent_count > 0 THEN 'completed'::email_campaigns_status
+			ELSE 'failed'::email_campaigns_status
+		END
+		WHERE id = $1 AND status = 'sending'::email_campaigns_status
+	`, id)
+	if err != nil {
+		return fmt.Errorf("mark campaign completed: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+func (r *EmailRepo) ListCampaignsInProgress(ctx context.Context) ([]int64, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id FROM email_campaigns WHERE status = 'sending'
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list campaigns in progress: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+func (r *EmailRepo) RecalcCampaignStats(ctx context.Context, id int64) (sent, failed int, err error) {
+	err = r.db.QueryRowContext(ctx, `
+		SELECT
+			COUNT(*) FILTER (WHERE status = 'sent'),
+			COUNT(*) FILTER (WHERE status = 'failed')
+		FROM email_logs
+		WHERE campaign_id = $1
+	`, id).Scan(&sent, &failed)
+	return
+}
+
+func (r *EmailRepo) SetCampaignCounts(ctx context.Context, id int64, sent, failed int) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE email_campaigns SET sent_count = $2, failed_count = $3 WHERE id = $1
+	`, id, sent, failed)
+	return err
+}
+
 var _ = time.Now

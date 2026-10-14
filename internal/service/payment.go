@@ -3,10 +3,13 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Hisaalu/rogele/internal/domain"
+	"github.com/Hisaalu/rogele/internal/mailer"
 	"github.com/Hisaalu/rogele/internal/payments"
 	"github.com/Hisaalu/rogele/internal/repository"
 )
@@ -28,6 +31,9 @@ type PaymentService struct {
 	subscriptions *SubscriptionService
 	plans         planLookup
 	providers     *payments.Registry
+	users         repository.UserRepository
+	mailer        *mailer.Service
+	log           *slog.Logger
 	currency      string
 }
 
@@ -36,6 +42,9 @@ func NewPaymentService(
 	subscriptions *SubscriptionService,
 	plans planLookup,
 	providers *payments.Registry,
+	users repository.UserRepository,
+	mailerSvc *mailer.Service,
+	log *slog.Logger,
 	currency string,
 ) *PaymentService {
 	return &PaymentService{
@@ -43,6 +52,9 @@ func NewPaymentService(
 		subscriptions: subscriptions,
 		plans:         plans,
 		providers:     providers,
+		users:         users,
+		mailer:        mailerSvc,
+		log:           log,
 		currency:      currency,
 	}
 }
@@ -69,13 +81,13 @@ func (s *PaymentService) Initiate(ctx context.Context, actor ActorContext, in In
 	}
 
 	uid := actor.UserID
-	planType := fmt.Sprintf("%d", plan.ID)
+	planRef := strconv.FormatInt(plan.ID, 10)
 	methodCopy := method
 
 	payment := &domain.Payment{
 		UserID:        &uid,
 		Amount:        &plan.Price,
-		PlanType:      &planType,
+		PlanType:      &planRef,
 		PaymentMethod: &methodCopy,
 		PhoneNumber:   &in.PhoneNumber,
 		Status:        domain.PaymentPending,
@@ -211,7 +223,7 @@ func (s *PaymentService) applyProviderStatus(
 		return nil
 	}
 
-	now := timeNow()
+	now := time.Now()
 	p.Status = newStatus
 	if raw != nil {
 		p.PaymentGatewayResponse = raw
@@ -224,18 +236,20 @@ func (s *PaymentService) applyProviderStatus(
 	}
 
 	if newStatus == domain.PaymentCompleted && p.UserID != nil && p.Amount != nil && p.PlanType != nil {
-		planID, _ := strconv.ParseInt(*p.PlanType, 10, 64)
-		plan, err := s.plans.GetPlan(ctx, planID)
-		if err == nil {
-			sub, err := s.subscriptions.ActivateFromPayment(
-				ctx, *p.UserID, plan, p.ID,
-				derefString(p.PaymentMethod),
-				derefString(p.TransactionID),
-			)
-			if err == nil && sub != nil {
-				p.SubscriptionID = &sub.ID
-				_ = s.payments.Update(ctx, p)
-				_ = s.subscriptions.MarkConverted(ctx, *p.UserID)
+		planID, parseErr := strconv.ParseInt(*p.PlanType, 10, 64)
+		if parseErr == nil {
+			plan, err := s.plans.GetPlan(ctx, planID)
+			if err == nil {
+				sub, err := s.subscriptions.ActivateFromPayment(
+					ctx, *p.UserID, plan, p.ID,
+					derefString(p.PaymentMethod),
+					derefString(p.TransactionID),
+				)
+				if err == nil && sub != nil {
+					p.SubscriptionID = &sub.ID
+					_ = s.payments.Update(ctx, p)
+					_ = s.subscriptions.MarkConverted(ctx, *p.UserID)
+				}
 			}
 		}
 	}
@@ -251,7 +265,66 @@ func (s *PaymentService) applyProviderStatus(
 	}
 	_, _ = s.payments.CreateHistory(ctx, history)
 
+	if newStatus == domain.PaymentCompleted {
+		s.sendPaymentConfirmation(ctx, p)
+	}
+
 	return nil
+}
+
+func (s *PaymentService) sendPaymentConfirmation(ctx context.Context, p *domain.Payment) {
+	if s.mailer == nil || p.UserID == nil {
+		return
+	}
+
+	u, err := s.users.GetByID(ctx, *p.UserID)
+	if err != nil {
+		s.log.Warn("payment confirmation: user lookup failed", "user_id", *p.UserID, "error", err)
+		return
+	}
+
+	planName := "your subscription"
+	if p.PlanType != nil {
+		if planID, err := strconv.ParseInt(*p.PlanType, 10, 64); err == nil {
+			if plan, err := s.plans.GetPlan(ctx, planID); err == nil {
+				planName = plan.Name
+			}
+		}
+	}
+
+	amount := "0.00"
+	if p.Amount != nil {
+		amount = fmt.Sprintf("%.2f", *p.Amount)
+	}
+
+	method := "unknown"
+	if p.PaymentMethod != nil {
+		method = *p.PaymentMethod
+	}
+
+	txnID := ""
+	if p.TransactionID != nil {
+		txnID = *p.TransactionID
+	}
+
+	endDate := time.Now().AddDate(0, 0, 30).Format("January 2, 2006")
+	if sub, err := s.subscriptions.GetMyActive(ctx, ActorContext{UserID: *p.UserID, Role: u.Role}); err == nil {
+		endDate = sub.EndDate.Format("January 2, 2006")
+	}
+
+	vars := map[string]any{
+		"FirstName":     derefOr(u.FirstName, "there"),
+		"PlanName":      planName,
+		"Amount":        amount,
+		"Currency":      s.currency,
+		"PaymentMethod": method,
+		"TransactionID": txnID,
+		"EndDate":       endDate,
+	}
+
+	if _, err := s.mailer.Enqueue(ctx, "payment_confirmation", u.Email, u.FirstName, vars); err != nil {
+		s.log.Warn("payment confirmation enqueue failed", "payment_id", p.ID, "error", err)
+	}
 }
 
 func derefString(p *string) string {

@@ -17,6 +17,7 @@ import (
 	"github.com/Hisaalu/rogele/internal/payments"
 	"github.com/Hisaalu/rogele/internal/repository"
 	"github.com/Hisaalu/rogele/internal/repository/postgres"
+	"github.com/Hisaalu/rogele/internal/scheduler"
 	"github.com/Hisaalu/rogele/internal/server"
 	"github.com/Hisaalu/rogele/internal/service"
 	"github.com/Hisaalu/rogele/internal/storage"
@@ -83,13 +84,15 @@ func run() error {
 	}
 
 	mailerSvc := mailer.NewService(sender, emailRepo, log, cfg.App.Name, cfg.Email.WebBaseURL)
-	campaignSvc := service.NewCampaignService(emailRepo, mailerSvc, log)
 
 	if err := seedEmailTemplates(ctx, emailRepo, log); err != nil {
 		log.Warn("email template seed failed", "error", err)
 	}
 
 	go mailerSvc.Run(ctx)
+
+	expiryScheduler := scheduler.NewExpiryScheduler(database, mailerSvc, log, cfg.Email.WebBaseURL)
+	go expiryScheduler.Run(ctx)
 
 	authSvc := service.NewAuthService(
 		repos.User,
@@ -107,7 +110,18 @@ func run() error {
 	providers := payments.NewRegistry(cfg.Momo, cfg.Airtel)
 	log.Info("payment providers", "enabled", providers.Enabled())
 
-	paySvc := service.NewPaymentService(repos.Payment, subSvc, planRepo, providers, cfg.Momo.Currency)
+	paySvc := service.NewPaymentService(
+		repos.Payment,
+		subSvc,
+		planRepo,
+		providers,
+		repos.User,
+		mailerSvc,
+		log,
+		cfg.Momo.Currency,
+	)
+
+	campaignSvc := service.NewCampaignService(emailRepo, mailerSvc, log)
 
 	crudConfig, err := crud.Load("./configs/resources.yaml")
 	if err != nil {
@@ -142,10 +156,10 @@ func run() error {
 		QuizSvc:       quizSvc,
 		SubSvc:        subSvc,
 		PaySvc:        paySvc,
+		CampaignSvc:   campaignSvc,
 		CRUDConfig:    crudConfig,
 		CRUDRepo:      crudRepo,
 		UploadHandler: uploadHandler,
-		CampaignSvc:   campaignSvc,
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.App.Port)

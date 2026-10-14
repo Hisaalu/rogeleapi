@@ -2,8 +2,6 @@ package mailer
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -33,8 +31,6 @@ func NewService(sender Sender, repo *postgres.EmailRepo, log *slog.Logger, fromN
 	}
 }
 
-// Enqueue renders the subject and queues the message for delivery.
-// This is what services call: they pass a template name and variables.
 func (s *Service) Enqueue(
 	ctx context.Context,
 	templateName string,
@@ -44,12 +40,12 @@ func (s *Service) Enqueue(
 ) (*domain.EmailJob, error) {
 	tmpl, err := s.repo.GetTemplateByName(ctx, templateName)
 	if err != nil {
-		return nil, fmt.Errorf("template %q: %w", templateName, err)
+		return nil, err
 	}
 
 	subject, err := RenderText(tmpl.Subject, vars)
 	if err != nil {
-		return nil, fmt.Errorf("render subject: %w", err)
+		return nil, err
 	}
 
 	job := &domain.EmailJob{
@@ -64,8 +60,6 @@ func (s *Service) Enqueue(
 	return s.repo.Enqueue(ctx, job)
 }
 
-// EnqueueRaw is a convenience wrapper when you already have the subject
-// and don't want to look up a template (used by campaigns).
 func (s *Service) EnqueueRaw(
 	ctx context.Context,
 	toEmail string,
@@ -89,20 +83,23 @@ func (s *Service) EnqueueRaw(
 	return s.repo.Enqueue(ctx, job)
 }
 
-// Run is the worker loop. It polls the queue and dispatches emails.
-// Cancel the context to stop it.
 func (s *Service) Run(ctx context.Context) {
 	s.log.Info("mailer worker started", "poll_every", s.pollEvery)
-	ticker := time.NewTicker(s.pollEvery)
-	defer ticker.Stop()
+	drainTicker := time.NewTicker(s.pollEvery)
+	defer drainTicker.Stop()
+
+	reconcileTicker := time.NewTicker(10 * time.Second)
+	defer reconcileTicker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			s.log.Info("mailer worker stopped")
 			return
-		case <-ticker.C:
+		case <-drainTicker.C:
 			s.drain(ctx)
+		case <-reconcileTicker.C:
+			s.reconcileCampaigns(ctx)
 		}
 	}
 }
@@ -127,30 +124,13 @@ func (s *Service) drain(ctx context.Context) {
 }
 
 func (s *Service) deliver(ctx context.Context, job *domain.EmailJob) {
-	// 1. Create a log entry first (status = pending)
-	logEntry := &domain.EmailLog{
-		CampaignID:     job.CampaignID,
-		RecipientEmail: job.ToEmail,
-		RecipientName:  job.ToName,
-		Subject:        job.Subject,
-		Status:         "pending",
-	}
-	savedLog, err := s.repo.CreateLog(ctx, logEntry)
-	if err != nil {
-		s.log.Error("mailer: create log", "error", err, "job", job.ID)
-		_ = s.repo.MarkJobFailed(ctx, job.ID, "create log: "+err.Error())
-		return
-	}
-
-	// 2. Render body
 	html, err := s.renderBody(ctx, job)
 	if err != nil {
 		s.log.Error("mailer: render body", "error", err, "job", job.ID)
-		s.recordFailure(ctx, job, savedLog, "render: "+err.Error())
+		s.persistFailureIfFinal(ctx, job, "render: "+err.Error())
 		return
 	}
 
-	// 3. Send
 	msg := Message{
 		To:      job.ToEmail,
 		Subject: job.Subject,
@@ -167,24 +147,49 @@ func (s *Service) deliver(ctx context.Context, job *domain.EmailJob) {
 			"to", job.ToEmail,
 			"template", job.TemplateName,
 			"attempts", job.Attempts+1)
-		s.recordFailure(ctx, job, savedLog, err.Error())
+
+		s.persistFailureIfFinal(ctx, job, err.Error())
+		_ = s.repo.MarkJobFailed(ctx, job.ID, err.Error())
 		return
 	}
 
-	// 4. Success
 	now := time.Now()
-	savedLog.Status = "sent"
-	savedLog.SentAt = &now
-	_ = s.repo.UpdateLog(ctx, savedLog)
-	_ = s.repo.MarkJobSent(ctx, job.ID, savedLog.ID)
-	if job.CampaignID != nil {
-		_ = s.repo.IncrementCampaignStats(ctx, *job.CampaignID, 1, 0)
+	logEntry := &domain.EmailLog{
+		CampaignID:     job.CampaignID,
+		RecipientEmail: job.ToEmail,
+		RecipientName:  job.ToName,
+		Subject:        job.Subject,
+		Status:         "sent",
+		SentAt:         &now,
+	}
+	savedLog, err := s.repo.CreateLog(ctx, logEntry)
+	if err != nil {
+		s.log.Error("mailer: create log", "error", err, "job", job.ID)
+	} else {
+		_ = s.repo.MarkJobSent(ctx, job.ID, savedLog.ID)
 	}
 
 	s.log.Info("mailer: sent",
 		"to", job.ToEmail,
 		"template", job.TemplateName,
 		"campaign_id", job.CampaignID)
+}
+
+func (s *Service) persistFailureIfFinal(ctx context.Context, job *domain.EmailJob, reason string) {
+	if job.Attempts+1 < job.MaxAttempts {
+		return
+	}
+	logEntry := &domain.EmailLog{
+		CampaignID:     job.CampaignID,
+		RecipientEmail: job.ToEmail,
+		RecipientName:  job.ToName,
+		Subject:        job.Subject,
+		Status:         "failed",
+		ErrorMessage:   &reason,
+	}
+	if _, err := s.repo.CreateLog(ctx, logEntry); err != nil {
+		s.log.Error("mailer: create failure log", "error", err, "job", job.ID)
+	}
 }
 
 func (s *Service) renderBody(ctx context.Context, job *domain.EmailJob) (string, error) {
@@ -203,13 +208,38 @@ func (s *Service) recordFailure(ctx context.Context, job *domain.EmailJob, logEn
 	logEntry.ErrorMessage = &reason
 	_ = s.repo.UpdateLog(ctx, logEntry)
 	_ = s.repo.MarkJobFailed(ctx, job.ID, reason)
-	if job.CampaignID != nil && job.Attempts+1 >= job.MaxAttempts {
-		_ = s.repo.IncrementCampaignStats(ctx, *job.CampaignID, 0, 1)
+}
+
+func (s *Service) reconcileCampaigns(ctx context.Context) {
+	ids, err := s.repo.ListCampaignsInProgress(ctx)
+	if err != nil {
+		s.log.Error("reconciler: list campaigns", "error", err)
+		return
+	}
+	for _, id := range ids {
+		pending, err := s.repo.CountPendingJobs(ctx, id)
+		if err != nil {
+			s.log.Error("reconciler: count pending", "campaign_id", id, "error", err)
+			continue
+		}
+		if pending > 0 {
+			continue
+		}
+		sent, failed, err := s.repo.RecalcCampaignStats(ctx, id)
+		if err != nil {
+			s.log.Error("reconciler: recalc stats", "campaign_id", id, "error", err)
+			continue
+		}
+		_ = s.repo.SetCampaignCounts(ctx, id, sent, failed)
+		if err := s.repo.MarkCampaignCompleted(ctx, id); err == nil {
+			s.log.Info("campaign completed",
+				"campaign_id", id,
+				"sent", sent,
+				"failed", failed)
+		}
 	}
 }
 
-// stripTags is a very rough HTML-to-text. Good enough for the plain-text
-// alternative part of emails; not meant for display.
 func stripTags(s string) string {
 	var out []byte
 	inTag := false
@@ -226,6 +256,3 @@ func stripTags(s string) string {
 	}
 	return string(out)
 }
-
-// Ensure imports are used
-var _ = json.Marshal
