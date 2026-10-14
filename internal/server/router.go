@@ -32,6 +32,7 @@ type RouterDeps struct {
 	CRUDConfig    *crud.Config
 	CRUDRepo      *crud.Repository
 	UploadHandler *handler.UploadHandler
+	CampaignSvc   *service.CampaignService
 }
 
 func NewRouter(deps RouterDeps) http.Handler {
@@ -139,6 +140,21 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Get("/history", payHandler.MyHistory)
 			r.Get("/all", payHandler.ListAll)
 			r.Get("/{id}/status", payHandler.GetStatus)
+		})
+
+		campaignHandler := handler.NewCampaignHandler(deps.CampaignSvc, deps.Log)
+		r.Route("/admin/email-campaigns", func(r chi.Router) {
+			r.Use(middleware.Authenticate(deps.Tokens))
+			r.Get("/", campaignHandler.List)
+			r.Post("/", campaignHandler.Create)
+			r.Route("/{id}", func(r chi.Router) {
+				r.Get("/", campaignHandler.Get)
+				r.Patch("/", campaignHandler.Update)
+				r.Delete("/", campaignHandler.Delete)
+				r.Post("/preview", campaignHandler.Preview)
+				r.Post("/send", campaignHandler.Send)
+				r.Get("/logs", campaignHandler.Logs)
+			})
 		})
 
 		webhookHandler := handler.NewWebhookHandler(deps.PaySvc, deps.Log)

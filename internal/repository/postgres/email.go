@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lib/pq"
+
 	"github.com/Hisaalu/rogele/internal/dberr"
 	"github.com/Hisaalu/rogele/internal/domain"
 )
@@ -463,6 +465,85 @@ func scanCampaignRow(s emailScanner) (*domain.EmailCampaign, error) {
 		c.SentAt = &sentAt.Time
 	}
 	return &c, nil
+}
+
+func (r *EmailRepo) DeleteCampaign(ctx context.Context, id int64) error {
+	res, err := r.db.ExecContext(ctx, `DELETE FROM email_campaigns WHERE id = $1`, id)
+	if err != nil {
+		return dberr.Translate(fmt.Errorf("delete campaign: %w", err))
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+func (r *EmailRepo) ListRecipientsByRole(ctx context.Context, role string) ([]*domain.EmailRecipient, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, email, first_name, last_name
+		FROM users
+		WHERE is_active = true AND is_suspended = false AND role = $1
+		ORDER BY id
+	`, role)
+	if err != nil {
+		return nil, fmt.Errorf("list recipients by role: %w", err)
+	}
+	defer rows.Close()
+	return scanRecipients(rows)
+}
+
+func (r *EmailRepo) ListAllRecipients(ctx context.Context) ([]*domain.EmailRecipient, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, email, first_name, last_name
+		FROM users
+		WHERE is_active = true AND is_suspended = false
+		ORDER BY id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list all recipients: %w", err)
+	}
+	defer rows.Close()
+	return scanRecipients(rows)
+}
+
+func (r *EmailRepo) ListRecipientsByIDs(ctx context.Context, ids []int64) ([]*domain.EmailRecipient, error) {
+	if len(ids) == 0 {
+		return []*domain.EmailRecipient{}, nil
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, email, first_name, last_name
+		FROM users
+		WHERE id = ANY($1) AND is_active = true AND is_suspended = false
+		ORDER BY id
+	`, pq.Array(ids))
+	if err != nil {
+		return nil, fmt.Errorf("list recipients by ids: %w", err)
+	}
+	defer rows.Close()
+	return scanRecipients(rows)
+}
+
+func scanRecipients(rows *sql.Rows) ([]*domain.EmailRecipient, error) {
+	out := make([]*domain.EmailRecipient, 0)
+	for rows.Next() {
+		var (
+			rec   domain.EmailRecipient
+			first sql.NullString
+			last  sql.NullString
+		)
+		if err := rows.Scan(&rec.ID, &rec.Email, &first, &last); err != nil {
+			return nil, err
+		}
+		if first.Valid {
+			rec.FirstName = &first.String
+		}
+		if last.Valid {
+			rec.LastName = &last.String
+		}
+		out = append(out, &rec)
+	}
+	return out, rows.Err()
 }
 
 var _ = time.Now

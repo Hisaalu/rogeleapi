@@ -83,6 +83,7 @@ func run() error {
 	}
 
 	mailerSvc := mailer.NewService(sender, emailRepo, log, cfg.App.Name, cfg.Email.WebBaseURL)
+	campaignSvc := service.NewCampaignService(emailRepo, mailerSvc, log)
 
 	if err := seedEmailTemplates(ctx, emailRepo, log); err != nil {
 		log.Warn("email template seed failed", "error", err)
@@ -144,6 +145,7 @@ func run() error {
 		CRUDConfig:    crudConfig,
 		CRUDRepo:      crudRepo,
 		UploadHandler: uploadHandler,
+		CampaignSvc:   campaignSvc,
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.App.Port)
