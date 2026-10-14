@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/Hisaalu/rogele/internal/domain"
 )
@@ -19,6 +20,7 @@ type UserRepository interface {
 	GetByID(ctx context.Context, id int64) (*domain.User, error)
 	GetByEmail(ctx context.Context, email string) (*domain.User, error)
 	Update(ctx context.Context, u *domain.User) error
+	UpdatePassword(ctx context.Context, id int64, hash string) error
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context, f UserFilter) ([]*domain.User, error)
 	UpdateLastLogin(ctx context.Context, id int64) error
@@ -160,12 +162,20 @@ type PaymentRepository interface {
 	ListHistoryBySubscription(ctx context.Context, subscriptionID int64) ([]*domain.PaymentHistory, error)
 }
 
+type PasswordResetRepository interface {
+	Create(ctx context.Context, pr *domain.PasswordReset) (*domain.PasswordReset, error)
+	GetByToken(ctx context.Context, token string) (*domain.PasswordReset, error)
+	MarkUsed(ctx context.Context, id int64) error
+	CountRecent(ctx context.Context, userID int64, within time.Duration) (int, error)
+}
+
 type Repositories struct {
-	User         UserRepository
-	Lesson       LessonRepository
-	Homework     HomeworkRepository
-	Quiz         QuizRepository
-	Subscription SubscriptionRepository
-	FreeTrial    FreeTrialRepository
-	Payment      PaymentRepository
+	User          UserRepository
+	Lesson        LessonRepository
+	Homework      HomeworkRepository
+	Quiz          QuizRepository
+	Subscription  SubscriptionRepository
+	FreeTrial     FreeTrialRepository
+	Payment       PaymentRepository
+	PasswordReset PasswordResetRepository
 }

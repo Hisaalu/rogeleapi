@@ -2,12 +2,16 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Hisaalu/rogele/internal/auth"
 	"github.com/Hisaalu/rogele/internal/domain"
+	"github.com/Hisaalu/rogele/internal/mailer"
 	"github.com/Hisaalu/rogele/internal/repository"
 )
 
@@ -26,19 +30,49 @@ type LoginInput struct {
 	Password string
 }
 
+type ForgotPasswordInput struct {
+	Email string
+}
+
+type ResetPasswordInput struct {
+	Token    string
+	Password string
+}
+
 type AuthResult struct {
 	User         *domain.User
 	AccessToken  string
 	RefreshToken string
 }
 
+const (
+	resetTokenTTL        = 30 * time.Minute
+	resetRateLimit       = 3
+	resetRateLimitWindow = 15 * time.Minute
+)
+
 type AuthService struct {
-	users  repository.UserRepository
-	tokens *auth.TokenManager
+	users      repository.UserRepository
+	resetRepo  repository.PasswordResetRepository
+	mailer     *mailer.Service
+	webBaseURL string
+	tokens     *auth.TokenManager
 }
 
-func NewAuthService(users repository.UserRepository, tokens *auth.TokenManager) *AuthService {
-	return &AuthService{users: users, tokens: tokens}
+func NewAuthService(
+	users repository.UserRepository,
+	resetRepo repository.PasswordResetRepository,
+	mailerSvc *mailer.Service,
+	webBaseURL string,
+	tokens *auth.TokenManager,
+) *AuthService {
+	return &AuthService{
+		users:      users,
+		resetRepo:  resetRepo,
+		mailer:     mailerSvc,
+		webBaseURL: webBaseURL,
+		tokens:     tokens,
+	}
 }
 
 func (s *AuthService) Register(ctx context.Context, in RegisterInput) (*AuthResult, error) {
@@ -138,6 +172,93 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*AuthRe
 	return s.issueTokens(u)
 }
 
+func (s *AuthService) ForgotPassword(ctx context.Context, in ForgotPasswordInput) error {
+	email := strings.TrimSpace(strings.ToLower(in.Email))
+	if email == "" {
+		return fmt.Errorf("%w: email is required", domain.ErrInvalidInput)
+	}
+
+	u, err := s.users.GetByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+
+	if s.resetRepo == nil {
+		return fmt.Errorf("%w: password reset is not available", domain.ErrInternal)
+	}
+
+	recent, err := s.resetRepo.CountRecent(ctx, u.ID, resetRateLimitWindow)
+	if err != nil {
+		return err
+	}
+	if recent >= resetRateLimit {
+		return nil
+	}
+
+	token, err := generateResetToken()
+	if err != nil {
+		return err
+	}
+
+	pr := &domain.PasswordReset{
+		UserID:    u.ID,
+		Token:     token,
+		ExpiresAt: time.Now().Add(resetTokenTTL),
+	}
+	if _, err := s.resetRepo.Create(ctx, pr); err != nil {
+		return err
+	}
+
+	if s.mailer != nil {
+		resetLink := strings.TrimRight(s.webBaseURL, "/") + "/reset-password?token=" + token
+		vars := map[string]any{
+			"FirstName": derefOr(u.FirstName, "there"),
+			"ResetLink": resetLink,
+		}
+		if _, err := s.mailer.Enqueue(ctx, "password_reset", u.Email, u.FirstName, vars); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *AuthService) ResetPassword(ctx context.Context, in ResetPasswordInput) error {
+	if in.Token == "" {
+		return fmt.Errorf("%w: token is required", domain.ErrInvalidInput)
+	}
+	if len(in.Password) < 8 {
+		return fmt.Errorf("%w: password must be at least 8 characters", domain.ErrInvalidInput)
+	}
+
+	pr, err := s.resetRepo.GetByToken(ctx, in.Token)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return fmt.Errorf("%w: invalid or expired token", domain.ErrInvalidInput)
+		}
+		return err
+	}
+	if pr.Used {
+		return fmt.Errorf("%w: token has already been used", domain.ErrInvalidInput)
+	}
+	if time.Now().After(pr.ExpiresAt) {
+		return fmt.Errorf("%w: token has expired", domain.ErrInvalidInput)
+	}
+
+	hash, err := auth.HashPassword(in.Password)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	if err := s.users.UpdatePassword(ctx, pr.UserID, hash); err != nil {
+		return err
+	}
+
+	return s.resetRepo.MarkUsed(ctx, pr.ID)
+}
+
 func (s *AuthService) issueTokens(u *domain.User) (*AuthResult, error) {
 	access, err := s.tokens.GenerateAccess(u)
 	if err != nil {
@@ -152,4 +273,19 @@ func (s *AuthService) issueTokens(u *domain.User) (*AuthResult, error) {
 		AccessToken:  access,
 		RefreshToken: refresh,
 	}, nil
+}
+
+func generateResetToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+func derefOr(s *string, fallback string) string {
+	if s == nil || *s == "" {
+		return fallback
+	}
+	return *s
 }

@@ -25,6 +25,15 @@ type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+type ForgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+type ResetPasswordRequest struct {
+	Token    string `json:"token"`
+	Password string `json:"password"`
+}
+
 type UserResponse struct {
 	ID                 int64      `json:"id"`
 	RegistrationNumber *string    `json:"registration_number,omitempty"`

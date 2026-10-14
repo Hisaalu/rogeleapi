@@ -96,6 +96,21 @@ func (r *UserRepo) Update(ctx context.Context, u *domain.User) error {
 	return nil
 }
 
+func (r *UserRepo) UpdatePassword(ctx context.Context, id int64, hash string) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE users SET password = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+		hash, id,
+	)
+	if err != nil {
+		return dberr.Translate(fmt.Errorf("update password: %w", err))
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 func (r *UserRepo) Delete(ctx context.Context, id int64) error {
 	res, err := r.db.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, id)
 	if err != nil {

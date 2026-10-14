@@ -54,13 +54,14 @@ func run() error {
 	}()
 
 	repos := &repository.Repositories{
-		User:         postgres.NewUserRepo(database),
-		Lesson:       postgres.NewLessonRepo(database),
-		Homework:     postgres.NewHomeworkRepo(database),
-		Quiz:         postgres.NewQuizRepo(database),
-		Subscription: postgres.NewSubscriptionRepo(database),
-		FreeTrial:    postgres.NewFreeTrialRepo(database),
-		Payment:      postgres.NewPaymentRepo(database),
+		User:          postgres.NewUserRepo(database),
+		Lesson:        postgres.NewLessonRepo(database),
+		Homework:      postgres.NewHomeworkRepo(database),
+		Quiz:          postgres.NewQuizRepo(database),
+		Subscription:  postgres.NewSubscriptionRepo(database),
+		FreeTrial:     postgres.NewFreeTrialRepo(database),
+		Payment:       postgres.NewPaymentRepo(database),
+		PasswordReset: postgres.NewPasswordResetRepo(database),
 	}
 
 	planRepo := postgres.NewPlanRepo(database)
@@ -78,7 +79,7 @@ func run() error {
 		log.Info("mailer enabled", "provider", "resend", "from", cfg.Email.From)
 	} else {
 		sender = mailer.NewNoopSender(log)
-		log.Warn("mailer using noop sender — emails will be logged, not sent")
+		log.Warn("mailer using noop sender")
 	}
 
 	mailerSvc := mailer.NewService(sender, emailRepo, log, cfg.App.Name, cfg.Email.WebBaseURL)
@@ -89,7 +90,13 @@ func run() error {
 
 	go mailerSvc.Run(ctx)
 
-	authSvc := service.NewAuthService(repos.User, tokenManager)
+	authSvc := service.NewAuthService(
+		repos.User,
+		repos.PasswordReset,
+		mailerSvc,
+		cfg.Email.WebBaseURL,
+		tokenManager,
+	)
 	userSvc := service.NewUserService(repos.User)
 	lessonSvc := service.NewLessonService(repos.Lesson, repos.User)
 	homeworkSvc := service.NewHomeworkService(repos.Homework, repos.User)
@@ -118,7 +125,7 @@ func run() error {
 		uploadHandler = handler.NewUploadHandler(r2Client, log)
 		log.Info("r2 storage enabled", "bucket", cfg.R2.Bucket)
 	} else {
-		log.Warn("r2 storage is not configured — upload endpoints disabled")
+		log.Warn("r2 storage is not configured")
 	}
 
 	router := server.NewRouter(server.RouterDeps{

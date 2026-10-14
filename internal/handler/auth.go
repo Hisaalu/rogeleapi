@@ -130,3 +130,42 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 	httputil.JSON(w, http.StatusOK, dto.FromDomain(user))
 }
+
+func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var req dto.ForgotPasswordRequest
+	if err := httputil.DecodeJSON(r, &req); err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+
+	if err := h.authSvc.ForgotPassword(r.Context(), service.ForgotPasswordInput{
+		Email: req.Email,
+	}); err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, map[string]string{
+		"message": "if an account exists for that email, a reset link has been sent",
+	})
+}
+
+func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req dto.ResetPasswordRequest
+	if err := httputil.DecodeJSON(r, &req); err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+
+	if err := h.authSvc.ResetPassword(r.Context(), service.ResetPasswordInput{
+		Token:    req.Token,
+		Password: req.Password,
+	}); err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, map[string]string{
+		"message": "password updated",
+	})
+}
