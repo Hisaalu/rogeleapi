@@ -10,6 +10,7 @@ import (
 	"github.com/Hisaalu/rogele/internal/crud"
 	"github.com/Hisaalu/rogele/internal/db"
 	"github.com/Hisaalu/rogele/internal/logger"
+	"github.com/Hisaalu/rogele/internal/payments"
 	"github.com/Hisaalu/rogele/internal/repository"
 	"github.com/Hisaalu/rogele/internal/repository/postgres"
 	"github.com/Hisaalu/rogele/internal/server"
@@ -47,11 +48,16 @@ func run() error {
 	}()
 
 	repos := &repository.Repositories{
-		User:     postgres.NewUserRepo(database),
-		Lesson:   postgres.NewLessonRepo(database),
-		Homework: postgres.NewHomeworkRepo(database),
-		Quiz:     postgres.NewQuizRepo(database),
+		User:         postgres.NewUserRepo(database),
+		Lesson:       postgres.NewLessonRepo(database),
+		Homework:     postgres.NewHomeworkRepo(database),
+		Quiz:         postgres.NewQuizRepo(database),
+		Subscription: postgres.NewSubscriptionRepo(database),
+		FreeTrial:    postgres.NewFreeTrialRepo(database),
+		Payment:      postgres.NewPaymentRepo(database),
 	}
+
+	planRepo := postgres.NewPlanRepo(database)
 
 	tokenManager := auth.NewTokenManager(
 		cfg.JWT.Secret,
@@ -64,6 +70,13 @@ func run() error {
 	lessonSvc := service.NewLessonService(repos.Lesson, repos.User)
 	homeworkSvc := service.NewHomeworkService(repos.Homework, repos.User)
 	quizSvc := service.NewQuizService(repos.Quiz, repos.User)
+
+	subSvc := service.NewSubscriptionService(repos.Subscription, planRepo, repos.FreeTrial, repos.User, repos.Payment)
+
+	providers := payments.NewRegistry(cfg.Momo, cfg.Airtel)
+	log.Info("payment providers", "enabled", providers.Enabled())
+
+	paySvc := service.NewPaymentService(repos.Payment, subSvc, planRepo, providers, cfg.Momo.Currency)
 
 	crudConfig, err := crud.Load("./configs/resources.yaml")
 	if err != nil {
@@ -84,6 +97,8 @@ func run() error {
 		LessonSvc:   lessonSvc,
 		HomeworkSvc: homeworkSvc,
 		QuizSvc:     quizSvc,
+		SubSvc:      subSvc,
+		PaySvc:      paySvc,
 		CRUDConfig:  crudConfig,
 		CRUDRepo:    crudRepo,
 	})

@@ -118,9 +118,54 @@ type QuizRepository interface {
 	ListAnswers(ctx context.Context, attemptID int64) ([]*domain.QuizAttemptAnswer, error)
 }
 
+type SubscriptionFilter struct {
+	UserID *int64
+	Status *domain.SubscriptionStatus
+	Limit  int
+	Offset int
+}
+
+type SubscriptionRepository interface {
+	Create(ctx context.Context, s *domain.Subscription) (*domain.Subscription, error)
+	GetByID(ctx context.Context, id int64) (*domain.Subscription, error)
+	GetActiveByUser(ctx context.Context, userID int64) (*domain.Subscription, error)
+	List(ctx context.Context, f SubscriptionFilter) ([]*domain.Subscription, error)
+	Update(ctx context.Context, s *domain.Subscription) error
+	ExpireOverdue(ctx context.Context) (int, error)
+}
+
+type FreeTrialRepository interface {
+	Create(ctx context.Context, t *domain.FreeTrial) (*domain.FreeTrial, error)
+	GetByUser(ctx context.Context, userID int64) (*domain.FreeTrial, error)
+	ExistsForEmail(ctx context.Context, email string) (bool, error)
+	Update(ctx context.Context, t *domain.FreeTrial) error
+}
+
+type PaymentFilter struct {
+	UserID *int64
+	Status *domain.PaymentStatus
+	Limit  int
+	Offset int
+}
+
+type PaymentRepository interface {
+	Create(ctx context.Context, p *domain.Payment) (*domain.Payment, error)
+	GetByID(ctx context.Context, id int64) (*domain.Payment, error)
+	GetByTransactionID(ctx context.Context, txnID string) (*domain.Payment, error)
+	List(ctx context.Context, f PaymentFilter) ([]*domain.Payment, error)
+	Update(ctx context.Context, p *domain.Payment) error
+
+	CreateHistory(ctx context.Context, h *domain.PaymentHistory) (*domain.PaymentHistory, error)
+	ListHistoryByUser(ctx context.Context, userID int64) ([]*domain.PaymentHistory, error)
+	ListHistoryBySubscription(ctx context.Context, subscriptionID int64) ([]*domain.PaymentHistory, error)
+}
+
 type Repositories struct {
-	User     UserRepository
-	Lesson   LessonRepository
-	Homework HomeworkRepository
-	Quiz     QuizRepository
+	User         UserRepository
+	Lesson       LessonRepository
+	Homework     HomeworkRepository
+	Quiz         QuizRepository
+	Subscription SubscriptionRepository
+	FreeTrial    FreeTrialRepository
+	Payment      PaymentRepository
 }

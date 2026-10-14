@@ -18,3 +18,17 @@ jwt:
   secret: ""
   access_ttl: 15m
   refresh_ttl: 168h
+
+momo:
+  base_url: ""
+  subscription_key: ""
+  api_user: ""
+  api_key: ""
+  target_env: sandbox
+  callback_url: ""
+
+airtel:
+  base_url: ""
+  client_id: ""
+  client_secret: ""
+  callback_url: ""

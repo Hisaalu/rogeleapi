@@ -27,6 +27,8 @@ type RouterDeps struct {
 	LessonSvc   *service.LessonService
 	HomeworkSvc *service.HomeworkService
 	QuizSvc     *service.QuizService
+	SubSvc      *service.SubscriptionService
+	PaySvc      *service.PaymentService
 	CRUDConfig  *crud.Config
 	CRUDRepo    *crud.Repository
 }
@@ -80,6 +82,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Get("/", homeworkHandler.List)
 			r.Get("/my-submissions", homeworkHandler.MySubmissions)
 			r.Post("/", homeworkHandler.Create)
+			r.Post("/submissions/{submissionId}/grade", homeworkHandler.Grade)
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", homeworkHandler.Get)
 				r.Patch("/", homeworkHandler.Update)
@@ -87,7 +90,6 @@ func NewRouter(deps RouterDeps) http.Handler {
 				r.Post("/submit", homeworkHandler.Submit)
 				r.Get("/submissions", homeworkHandler.ListSubmissions)
 			})
-			r.Post("/submissions/{submissionId}/grade", homeworkHandler.Grade)
 		})
 
 		quizHandler := handler.NewQuizHandler(deps.QuizSvc, deps.Log)
@@ -96,6 +98,8 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Get("/", quizHandler.List)
 			r.Get("/my-attempts", quizHandler.ListMyAttempts)
 			r.Post("/", quizHandler.Create)
+			r.Get("/attempts/{attemptId}", quizHandler.GetAttempt)
+			r.Post("/attempts/{attemptId}/submit", quizHandler.SubmitAttempt)
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", quizHandler.Get)
 				r.Patch("/", quizHandler.Update)
@@ -106,9 +110,36 @@ func NewRouter(deps RouterDeps) http.Handler {
 				r.Delete("/questions/{questionId}", quizHandler.DeleteQuestion)
 				r.Post("/attempts", quizHandler.StartAttempt)
 			})
-			r.Get("/attempts/{attemptId}", quizHandler.GetAttempt)
-			r.Post("/attempts/{attemptId}/submit", quizHandler.SubmitAttempt)
 		})
+
+		subHandler := handler.NewSubscriptionHandler(deps.SubSvc, deps.Log)
+		r.Route("/subscriptions", func(r chi.Router) {
+			r.Use(middleware.Authenticate(deps.Tokens))
+			r.Get("/me", subHandler.MyActive)
+			r.Get("/", subHandler.MyList)
+			r.Get("/all", subHandler.ListAll)
+			r.Post("/{id}/cancel", subHandler.Cancel)
+		})
+
+		r.Route("/trials", func(r chi.Router) {
+			r.Use(middleware.Authenticate(deps.Tokens))
+			r.Get("/me", subHandler.MyTrial)
+			r.Post("/", subHandler.StartTrial)
+		})
+
+		payHandler := handler.NewPaymentHandler(deps.PaySvc, deps.Log)
+		r.Route("/payments", func(r chi.Router) {
+			r.Use(middleware.Authenticate(deps.Tokens))
+			r.Post("/initiate", payHandler.Initiate)
+			r.Get("/me", payHandler.MyList)
+			r.Get("/history", payHandler.MyHistory)
+			r.Get("/all", payHandler.ListAll)
+			r.Get("/{id}/status", payHandler.GetStatus)
+		})
+
+		webhookHandler := handler.NewWebhookHandler(deps.PaySvc, deps.Log)
+		r.Post("/webhooks/mtn", webhookHandler.MTN)
+		r.Post("/webhooks/airtel", webhookHandler.Airtel)
 
 		if deps.CRUDConfig != nil && deps.CRUDRepo != nil {
 			crud.Mount(r, deps.CRUDConfig, deps.CRUDRepo, deps.Tokens, deps.Log)

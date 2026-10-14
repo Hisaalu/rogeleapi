@@ -1,0 +1,300 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/Hisaalu/rogele/internal/domain"
+	"github.com/Hisaalu/rogele/internal/payments"
+	"github.com/Hisaalu/rogele/internal/repository"
+)
+
+type InitiatePaymentInput struct {
+	PlanID      int64
+	Method      string
+	PhoneNumber string
+}
+
+type InitiatePaymentResult struct {
+	Payment           *domain.Payment
+	ProviderReference string
+	Status            string
+}
+
+type PaymentService struct {
+	payments      repository.PaymentRepository
+	subscriptions *SubscriptionService
+	plans         planLookup
+	providers     *payments.Registry
+	currency      string
+}
+
+func NewPaymentService(
+	payments repository.PaymentRepository,
+	subscriptions *SubscriptionService,
+	plans planLookup,
+	providers *payments.Registry,
+	currency string,
+) *PaymentService {
+	return &PaymentService{
+		payments:      payments,
+		subscriptions: subscriptions,
+		plans:         plans,
+		providers:     providers,
+		currency:      currency,
+	}
+}
+
+func (s *PaymentService) Initiate(ctx context.Context, actor ActorContext, in InitiatePaymentInput) (*InitiatePaymentResult, error) {
+	if in.PhoneNumber == "" {
+		return nil, fmt.Errorf("%w: phone number is required", domain.ErrInvalidInput)
+	}
+	method := strings.ToLower(strings.TrimSpace(in.Method))
+	provider, err := s.providers.Get(method)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err.Error())
+	}
+	if !provider.Enabled() {
+		return nil, fmt.Errorf("%w: %s payment provider is not configured", domain.ErrInvalidInput, method)
+	}
+
+	plan, err := s.plans.GetPlan(ctx, in.PlanID)
+	if err != nil {
+		return nil, err
+	}
+	if !plan.IsActive {
+		return nil, fmt.Errorf("%w: plan is not active", domain.ErrInvalidInput)
+	}
+
+	uid := actor.UserID
+	planType := fmt.Sprintf("%d", plan.ID)
+	methodCopy := method
+
+	payment := &domain.Payment{
+		UserID:        &uid,
+		Amount:        &plan.Price,
+		PlanType:      &planType,
+		PaymentMethod: &methodCopy,
+		PhoneNumber:   &in.PhoneNumber,
+		Status:        domain.PaymentPending,
+	}
+	created, err := s.payments.Create(ctx, payment)
+	if err != nil {
+		return nil, err
+	}
+
+	externalID := fmt.Sprintf("rogeledb-%d", created.ID)
+	reference := fmt.Sprintf("plan:%d", plan.ID)
+
+	result, err := provider.Initiate(ctx, payments.InitiateRequest{
+		Amount:     plan.Price,
+		Currency:   s.currency,
+		Phone:      in.PhoneNumber,
+		ExternalID: externalID,
+		Reference:  reference,
+		PayerMsg:   "Rogele subscription",
+		PayeeMsg:   "Rogele",
+	})
+	if err != nil {
+		created.Status = domain.PaymentFailed
+		_ = s.payments.Update(ctx, created)
+		return nil, fmt.Errorf("initiate payment: %w", err)
+	}
+
+	txnID := result.ProviderReference
+	created.TransactionID = &txnID
+	if result.Raw != nil {
+		created.PaymentGatewayResponse = result.Raw
+	}
+	if err := s.payments.Update(ctx, created); err != nil {
+		return nil, err
+	}
+
+	return &InitiatePaymentResult{
+		Payment:           created,
+		ProviderReference: result.ProviderReference,
+		Status:            result.Status,
+	}, nil
+}
+
+func (s *PaymentService) GetStatus(ctx context.Context, id int64, actor ActorContext) (*domain.Payment, error) {
+	p, err := s.payments.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if p.UserID != nil && *p.UserID != actor.UserID && actor.Role != domain.RoleAdmin {
+		return nil, domain.ErrForbidden
+	}
+	if p.Status == domain.PaymentCompleted || p.Status == domain.PaymentFailed || p.Status == domain.PaymentRefunded {
+		return p, nil
+	}
+	if p.PaymentMethod == nil || p.TransactionID == nil {
+		return p, nil
+	}
+
+	provider, err := s.providers.Get(*p.PaymentMethod)
+	if err != nil || !provider.Enabled() {
+		return p, nil
+	}
+
+	result, err := provider.Status(ctx, *p.TransactionID)
+	if err != nil {
+		return p, nil
+	}
+
+	if err := s.applyProviderStatus(ctx, p, result.Status, result.Reason, result.Raw); err != nil {
+		return nil, err
+	}
+	return s.payments.GetByID(ctx, id)
+}
+
+func (s *PaymentService) HandleWebhook(ctx context.Context, method string, payload map[string]any) error {
+	provider, err := s.providers.Get(method)
+	if err != nil {
+		return fmt.Errorf("%w: unknown provider %q", domain.ErrInvalidInput, method)
+	}
+	if !provider.Enabled() {
+		return fmt.Errorf("%w: provider %s not configured", domain.ErrInvalidInput, method)
+	}
+
+	ref := extractReference(payload)
+	if ref == "" {
+		return fmt.Errorf("%w: missing reference in webhook payload", domain.ErrInvalidInput)
+	}
+
+	p, err := s.payments.GetByTransactionID(ctx, ref)
+	if err != nil {
+		return err
+	}
+
+	status := extractStatus(payload)
+	return s.applyProviderStatus(ctx, p, status, "", payload)
+}
+
+func (s *PaymentService) ListForUser(ctx context.Context, actor ActorContext) ([]*domain.Payment, error) {
+	uid := actor.UserID
+	return s.payments.List(ctx, repository.PaymentFilter{UserID: &uid})
+}
+
+func (s *PaymentService) ListAll(ctx context.Context, actor ActorContext, f repository.PaymentFilter) ([]*domain.Payment, error) {
+	if actor.Role != domain.RoleAdmin {
+		return nil, fmt.Errorf("%w: admin only", domain.ErrForbidden)
+	}
+	return s.payments.List(ctx, f)
+}
+
+func (s *PaymentService) ListHistory(ctx context.Context, actor ActorContext) ([]*domain.PaymentHistory, error) {
+	return s.payments.ListHistoryByUser(ctx, actor.UserID)
+}
+
+func (s *PaymentService) applyProviderStatus(
+	ctx context.Context,
+	p *domain.Payment,
+	providerStatus string,
+	reason string,
+	raw map[string]any,
+) error {
+	normalized := strings.ToLower(providerStatus)
+	var newStatus domain.PaymentStatus
+	switch normalized {
+	case "successful", "success", "completed", "paid":
+		newStatus = domain.PaymentCompleted
+	case "failed", "rejected", "cancelled":
+		newStatus = domain.PaymentFailed
+	default:
+		return nil
+	}
+
+	if p.Status == newStatus {
+		return nil
+	}
+
+	now := timeNow()
+	p.Status = newStatus
+	if raw != nil {
+		p.PaymentGatewayResponse = raw
+	}
+	if newStatus == domain.PaymentCompleted {
+		p.PaymentDate = &now
+	}
+	if err := s.payments.Update(ctx, p); err != nil {
+		return err
+	}
+
+	if newStatus == domain.PaymentCompleted && p.UserID != nil && p.Amount != nil && p.PlanType != nil {
+		planID, _ := strconv.ParseInt(*p.PlanType, 10, 64)
+		plan, err := s.plans.GetPlan(ctx, planID)
+		if err == nil {
+			sub, err := s.subscriptions.ActivateFromPayment(
+				ctx, *p.UserID, plan, p.ID,
+				derefString(p.PaymentMethod),
+				derefString(p.TransactionID),
+			)
+			if err == nil && sub != nil {
+				p.SubscriptionID = &sub.ID
+				_ = s.payments.Update(ctx, p)
+				_ = s.subscriptions.MarkConverted(ctx, *p.UserID)
+			}
+		}
+	}
+
+	history := &domain.PaymentHistory{
+		UserID:         derefInt64(p.UserID),
+		SubscriptionID: p.SubscriptionID,
+		Amount:         derefFloat(p.Amount),
+		PaymentType:    "subscription",
+		Status:         string(newStatus),
+		PaymentMethod:  p.PaymentMethod,
+		TransactionID:  p.TransactionID,
+	}
+	_, _ = s.payments.CreateHistory(ctx, history)
+
+	return nil
+}
+
+func derefString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+func derefInt64(p *int64) int64 {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
+func derefFloat(p *float64) float64 {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
+func extractReference(payload map[string]any) string {
+	for _, k := range []string{"referenceId", "reference_id", "externalId", "external_id", "transaction_id", "transactionId", "id"} {
+		if v, ok := payload[k].(string); ok && v != "" {
+			return v
+		}
+	}
+	if data, ok := payload["data"].(map[string]any); ok {
+		return extractReference(data)
+	}
+	return ""
+}
+
+func extractStatus(payload map[string]any) string {
+	for _, k := range []string{"status", "state", "transaction_status"} {
+		if v, ok := payload[k].(string); ok {
+			return v
+		}
+	}
+	if data, ok := payload["data"].(map[string]any); ok {
+		return extractStatus(data)
+	}
+	return ""
+}

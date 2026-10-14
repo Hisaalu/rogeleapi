@@ -16,6 +16,8 @@ type Config struct {
 	App      AppConfig
 	Database DatabaseConfig
 	JWT      JWTConfig
+	Momo     MomoConfig
+	Airtel   AirtelConfig
 }
 
 type AppConfig struct {
@@ -50,6 +52,31 @@ type JWTConfig struct {
 	RefreshTTL time.Duration
 }
 
+type MomoConfig struct {
+	BaseURL         string
+	SubscriptionKey string
+	APIUser         string
+	APIKey          string
+	TargetEnv       string
+	CallbackURL     string
+	Currency        string
+}
+
+func (m MomoConfig) Enabled() bool {
+	return m.BaseURL != "" && m.SubscriptionKey != "" && m.APIUser != "" && m.APIKey != ""
+}
+
+type AirtelConfig struct {
+	BaseURL      string
+	ClientID     string
+	ClientSecret string
+	CallbackURL  string
+}
+
+func (a AirtelConfig) Enabled() bool {
+	return a.BaseURL != "" && a.ClientID != "" && a.ClientSecret != ""
+}
+
 func Load() (*Config, error) {
 	if err := loadDotEnv(); err != nil {
 		fmt.Fprintf(os.Stderr, "[config] warning: %v\n", err)
@@ -75,6 +102,7 @@ func Load() (*Config, error) {
 	v.SetDefault("database.conn_max_lifetime", "1h")
 	v.SetDefault("jwt.access_ttl", "15m")
 	v.SetDefault("jwt.refresh_ttl", "168h")
+	v.SetDefault("momo.currency", "EUR")
 
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
@@ -116,11 +144,12 @@ func Load() (*Config, error) {
 
 	if cfg.App.Env == "development" {
 		fmt.Fprintf(os.Stderr,
-			"[config] env=%s db=%s:%d/%s user=%s max_open=%d max_idle=%d\n",
+			"[config] env=%s db=%s:%d/%s user=%s max_open=%d max_idle=%d momo=%v airtel=%v\n",
 			cfg.App.Env,
 			cfg.Database.Host, cfg.Database.Port, cfg.Database.Name,
 			cfg.Database.User,
 			cfg.Database.MaxOpenConns, cfg.Database.MaxIdleConns,
+			cfg.Momo.Enabled(), cfg.Airtel.Enabled(),
 		)
 	}
 
@@ -128,33 +157,31 @@ func Load() (*Config, error) {
 }
 
 func applyStringEnv(cfg *Config) {
-	if v := getStringEnv("ROGELEDB_APP_NAME", ""); v != "" {
-		cfg.App.Name = v
+	set := func(key string, dst *string) {
+		if v := getStringEnv(key, ""); v != "" {
+			*dst = v
+		}
 	}
-	if v := getStringEnv("ROGELEDB_APP_ENV", ""); v != "" {
-		cfg.App.Env = v
-	}
-	if v := getStringEnv("ROGELEDB_DB_DRIVER", ""); v != "" {
-		cfg.Database.Driver = v
-	}
-	if v := getStringEnv("ROGELEDB_DB_HOST", ""); v != "" {
-		cfg.Database.Host = v
-	}
-	if v := getStringEnv("ROGELEDB_DB_USER", ""); v != "" {
-		cfg.Database.User = v
-	}
-	if v := getStringEnv("ROGELEDB_DB_PASSWORD", ""); v != "" {
-		cfg.Database.Password = v
-	}
-	if v := getStringEnv("ROGELEDB_DB_NAME", ""); v != "" {
-		cfg.Database.Name = v
-	}
-	if v := getStringEnv("ROGELEDB_DB_SSLMODE", ""); v != "" {
-		cfg.Database.SSLMode = v
-	}
-	if v := getStringEnv("ROGELEDB_JWT_SECRET", ""); v != "" {
-		cfg.JWT.Secret = v
-	}
+	set("ROGELEDB_APP_NAME", &cfg.App.Name)
+	set("ROGELEDB_APP_ENV", &cfg.App.Env)
+	set("ROGELEDB_DB_DRIVER", &cfg.Database.Driver)
+	set("ROGELEDB_DB_HOST", &cfg.Database.Host)
+	set("ROGELEDB_DB_USER", &cfg.Database.User)
+	set("ROGELEDB_DB_PASSWORD", &cfg.Database.Password)
+	set("ROGELEDB_DB_NAME", &cfg.Database.Name)
+	set("ROGELEDB_DB_SSLMODE", &cfg.Database.SSLMode)
+	set("ROGELEDB_JWT_SECRET", &cfg.JWT.Secret)
+	set("ROGELEDB_MTN_MOMO_BASE_URL", &cfg.Momo.BaseURL)
+	set("ROGELEDB_MTN_MOMO_SUBSCRIPTION_KEY", &cfg.Momo.SubscriptionKey)
+	set("ROGELEDB_MTN_MOMO_API_USER", &cfg.Momo.APIUser)
+	set("ROGELEDB_MTN_MOMO_API_KEY", &cfg.Momo.APIKey)
+	set("ROGELEDB_MTN_MOMO_TARGET_ENV", &cfg.Momo.TargetEnv)
+	set("ROGELEDB_MTN_MOMO_CALLBACK_URL", &cfg.Momo.CallbackURL)
+	set("ROGELEDB_AIRTEL_BASE_URL", &cfg.Airtel.BaseURL)
+	set("ROGELEDB_AIRTEL_CLIENT_ID", &cfg.Airtel.ClientID)
+	set("ROGELEDB_AIRTEL_CLIENT_SECRET", &cfg.Airtel.ClientSecret)
+	set("ROGELEDB_AIRTEL_CALLBACK_URL", &cfg.Airtel.CallbackURL)
+	set("ROGELEDB_MTN_MOMO_CURRENCY", &cfg.Momo.Currency)
 }
 
 func applyIntEnv(cfg *Config) {
