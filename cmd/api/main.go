@@ -47,7 +47,8 @@ func run() error {
 	}()
 
 	repos := &repository.Repositories{
-		User: postgres.NewUserRepo(database),
+		User:   postgres.NewUserRepo(database),
+		Lesson: postgres.NewLessonRepo(database),
 	}
 
 	tokenManager := auth.NewTokenManager(
@@ -58,6 +59,7 @@ func run() error {
 
 	authSvc := service.NewAuthService(repos.User, tokenManager)
 	userSvc := service.NewUserService(repos.User)
+	lessonSvc := service.NewLessonService(repos.Lesson)
 
 	crudConfig, err := crud.Load("./configs/resources.yaml")
 	if err != nil {
@@ -75,6 +77,7 @@ func run() error {
 		Tokens:     tokenManager,
 		AuthSvc:    authSvc,
 		UserSvc:    userSvc,
+		LessonSvc:  lessonSvc,
 		CRUDConfig: crudConfig,
 		CRUDRepo:   crudRepo,
 	})

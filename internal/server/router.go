@@ -24,6 +24,7 @@ type RouterDeps struct {
 	Tokens     *auth.TokenManager
 	AuthSvc    *service.AuthService
 	UserSvc    *service.UserService
+	LessonSvc  *service.LessonService
 	CRUDConfig *crud.Config
 	CRUDRepo   *crud.Repository
 }
@@ -51,6 +52,29 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.Authenticate(deps.Tokens))
 				r.Get("/me", authHandler.Me)
+			})
+		})
+
+		lessonHandler := handler.NewLessonHandler(deps.LessonSvc, deps.Log)
+
+		r.Route("/lessons", func(r chi.Router) {
+			r.Use(middleware.Authenticate(deps.Tokens))
+
+			r.Get("/", lessonHandler.List)
+			r.Get("/bookmarks", lessonHandler.ListBookmarks)
+			r.Post("/", lessonHandler.Create)
+
+			r.Route("/{id}", func(r chi.Router) {
+				r.Get("/", lessonHandler.Get)
+				r.Patch("/", lessonHandler.Update)
+				r.Delete("/", lessonHandler.Delete)
+				r.Post("/publish", lessonHandler.Publish)
+				r.Post("/approve", lessonHandler.Approve)
+				r.Post("/bookmark", lessonHandler.ToggleBookmark)
+
+				r.Get("/materials", lessonHandler.ListMaterials)
+				r.Post("/materials", lessonHandler.AddMaterial)
+				r.Delete("/materials/{materialId}", lessonHandler.DeleteMaterial)
 			})
 		})
 
