@@ -41,6 +41,14 @@ func NewTokenManager(secret string, accessTTL, refreshTTL time.Duration) *TokenM
 	}
 }
 
+func (m *TokenManager) AccessTTL() time.Duration {
+	return m.accessTTL
+}
+
+func (m *TokenManager) RefreshTTL() time.Duration {
+	return m.refreshTTL
+}
+
 func (m *TokenManager) GenerateAccess(u *domain.User) (string, error) {
 	return m.generate(u, TokenAccess, m.accessTTL)
 }

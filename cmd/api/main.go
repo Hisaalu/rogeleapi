@@ -56,6 +56,7 @@ func run() error {
 	)
 
 	authSvc := service.NewAuthService(repos.User, tokenManager)
+	userSvc := service.NewUserService(repos.User)
 
 	router := server.NewRouter(server.RouterDeps{
 		Log:     log,
@@ -64,6 +65,7 @@ func run() error {
 		Repos:   repos,
 		Tokens:  tokenManager,
 		AuthSvc: authSvc,
+		UserSvc: userSvc,
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.App.Port)

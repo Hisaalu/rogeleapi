@@ -118,6 +118,26 @@ func (s *AuthService) Login(ctx context.Context, in LoginInput) (*AuthResult, er
 	return s.issueTokens(u)
 }
 
+func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*AuthResult, error) {
+	claims, err := s.tokens.Verify(refreshToken)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid refresh token", domain.ErrUnauthorized)
+	}
+	if claims.Type != auth.TokenRefresh {
+		return nil, fmt.Errorf("%w: refresh token required", domain.ErrUnauthorized)
+	}
+
+	u, err := s.users.GetByID(ctx, claims.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if !u.IsActive || u.IsSuspended {
+		return nil, fmt.Errorf("%w: account is disabled", domain.ErrForbidden)
+	}
+
+	return s.issueTokens(u)
+}
+
 func (s *AuthService) issueTokens(u *domain.User) (*AuthResult, error) {
 	access, err := s.tokens.GenerateAccess(u)
 	if err != nil {

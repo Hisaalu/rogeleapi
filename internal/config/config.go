@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -81,53 +82,33 @@ func Load() (*Config, error) {
 		}
 	}
 
-	v.SetEnvPrefix("ROGELEDB")
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.AutomaticEnv()
-
-	explicit := map[string]string{
-		"app.name":                   "ROGELEDB_APP_NAME",
-		"app.env":                    "ROGELEDB_APP_ENV",
-		"app.port":                   "ROGELEDB_APP_PORT",
-		"database.driver":            "ROGELEDB_DB_DRIVER",
-		"database.host":              "ROGELEDB_DB_HOST",
-		"database.port":              "ROGELEDB_DB_PORT",
-		"database.user":              "ROGELEDB_DB_USER",
-		"database.password":          "ROGELEDB_DB_PASSWORD",
-		"database.name":              "ROGELEDB_DB_NAME",
-		"database.sslmode":           "ROGELEDB_DB_SSLMODE",
-		"database.max_open_conns":    "ROGELEDB_DB_MAX_OPEN_CONNS",
-		"database.max_idle_conns":    "ROGELEDB_DB_MAX_IDLE_CONNS",
-		"database.conn_max_lifetime": "ROGELEDB_DB_CONN_MAX_LIFETIME",
-		"jwt.secret":                 "ROGELEDB_JWT_SECRET",
-		"jwt.access_ttl":             "ROGELEDB_JWT_ACCESS_TTL",
-		"jwt.refresh_ttl":            "ROGELEDB_JWT_REFRESH_TTL",
-	}
-	for key, env := range explicit {
-		_ = v.BindEnv(key, env)
-	}
-
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
-	access, err := time.ParseDuration(v.GetString("jwt.access_ttl"))
+	applyStringEnv(&cfg)
+	applyIntEnv(&cfg)
+
+	accessTTL := getStringEnv("ROGELEDB_JWT_ACCESS_TTL", v.GetString("jwt.access_ttl"))
+	refreshTTL := getStringEnv("ROGELEDB_JWT_REFRESH_TTL", v.GetString("jwt.refresh_ttl"))
+	connLife := getStringEnv("ROGELEDB_DB_CONN_MAX_LIFETIME", v.GetString("database.conn_max_lifetime"))
+
+	access, err := time.ParseDuration(accessTTL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid jwt.access_ttl: %w", err)
 	}
-	refresh, err := time.ParseDuration(v.GetString("jwt.refresh_ttl"))
+	refresh, err := time.ParseDuration(refreshTTL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid jwt.refresh_ttl: %w", err)
 	}
-	cfg.JWT.AccessTTL = access
-	cfg.JWT.RefreshTTL = refresh
-
-	connLife, err := time.ParseDuration(v.GetString("database.conn_max_lifetime"))
+	life, err := time.ParseDuration(connLife)
 	if err != nil {
 		return nil, fmt.Errorf("invalid database.conn_max_lifetime: %w", err)
 	}
-	cfg.Database.ConnMaxLifetime = connLife
+	cfg.JWT.AccessTTL = access
+	cfg.JWT.RefreshTTL = refresh
+	cfg.Database.ConnMaxLifetime = life
 
 	if cfg.JWT.Secret == "" {
 		return nil, fmt.Errorf("JWT secret is empty — set ROGELEDB_JWT_SECRET in .env")
@@ -135,13 +116,86 @@ func Load() (*Config, error) {
 
 	if cfg.App.Env == "development" {
 		fmt.Fprintf(os.Stderr,
-			"[config] env=%s db=%s:%d/%s user=%s\n",
-			cfg.App.Env, cfg.Database.Host, cfg.Database.Port,
-			cfg.Database.Name, cfg.Database.User,
+			"[config] env=%s db=%s:%d/%s user=%s max_open=%d max_idle=%d\n",
+			cfg.App.Env,
+			cfg.Database.Host, cfg.Database.Port, cfg.Database.Name,
+			cfg.Database.User,
+			cfg.Database.MaxOpenConns, cfg.Database.MaxIdleConns,
 		)
 	}
 
 	return &cfg, nil
+}
+
+func applyStringEnv(cfg *Config) {
+	if v := getStringEnv("ROGELEDB_APP_NAME", ""); v != "" {
+		cfg.App.Name = v
+	}
+	if v := getStringEnv("ROGELEDB_APP_ENV", ""); v != "" {
+		cfg.App.Env = v
+	}
+	if v := getStringEnv("ROGELEDB_DB_DRIVER", ""); v != "" {
+		cfg.Database.Driver = v
+	}
+	if v := getStringEnv("ROGELEDB_DB_HOST", ""); v != "" {
+		cfg.Database.Host = v
+	}
+	if v := getStringEnv("ROGELEDB_DB_USER", ""); v != "" {
+		cfg.Database.User = v
+	}
+	if v := getStringEnv("ROGELEDB_DB_PASSWORD", ""); v != "" {
+		cfg.Database.Password = v
+	}
+	if v := getStringEnv("ROGELEDB_DB_NAME", ""); v != "" {
+		cfg.Database.Name = v
+	}
+	if v := getStringEnv("ROGELEDB_DB_SSLMODE", ""); v != "" {
+		cfg.Database.SSLMode = v
+	}
+	if v := getStringEnv("ROGELEDB_JWT_SECRET", ""); v != "" {
+		cfg.JWT.Secret = v
+	}
+}
+
+func applyIntEnv(cfg *Config) {
+	if v := getIntEnv("ROGELEDB_APP_PORT"); v > 0 {
+		cfg.App.Port = v
+	}
+	if v := getIntEnv("ROGELEDB_DB_PORT"); v > 0 {
+		cfg.Database.Port = v
+	}
+	if v := getIntEnv("ROGELEDB_DB_MAX_OPEN_CONNS"); v > 0 {
+		cfg.Database.MaxOpenConns = v
+	}
+	if v := getIntEnv("ROGELEDB_DB_MAX_IDLE_CONNS"); v > 0 {
+		cfg.Database.MaxIdleConns = v
+	}
+}
+
+func getStringEnv(key, fallback string) string {
+	if v, ok := os.LookupEnv(key); ok {
+		v = strings.TrimSpace(v)
+		if v != "" {
+			return v
+		}
+	}
+	return fallback
+}
+
+func getIntEnv(key string) int {
+	v, ok := os.LookupEnv(key)
+	if !ok {
+		return 0
+	}
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 func loadDotEnv() error {

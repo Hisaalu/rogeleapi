@@ -4,19 +4,33 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/Hisaalu/rogele/internal/auth"
 	"github.com/Hisaalu/rogele/internal/domain"
 	"github.com/Hisaalu/rogele/internal/dto"
 	"github.com/Hisaalu/rogele/internal/httputil"
+	"github.com/Hisaalu/rogele/internal/server/middleware"
 	"github.com/Hisaalu/rogele/internal/service"
 )
 
 type AuthHandler struct {
-	svc *service.AuthService
-	log *slog.Logger
+	authSvc *service.AuthService
+	userSvc *service.UserService
+	tokens  *auth.TokenManager
+	log     *slog.Logger
 }
 
-func NewAuthHandler(svc *service.AuthService, log *slog.Logger) *AuthHandler {
-	return &AuthHandler{svc: svc, log: log}
+func NewAuthHandler(
+	authSvc *service.AuthService,
+	userSvc *service.UserService,
+	tokens *auth.TokenManager,
+	log *slog.Logger,
+) *AuthHandler {
+	return &AuthHandler{
+		authSvc: authSvc,
+		userSvc: userSvc,
+		tokens:  tokens,
+		log:     log,
+	}
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
@@ -31,7 +45,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		role = domain.RoleExternal
 	}
 
-	result, err := h.svc.Register(r.Context(), service.RegisterInput{
+	result, err := h.authSvc.Register(r.Context(), service.RegisterInput{
 		Email:     req.Email,
 		Password:  req.Password,
 		FirstName: req.FirstName,
@@ -50,7 +64,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		AccessToken:  result.AccessToken,
 		RefreshToken: result.RefreshToken,
 		TokenType:    "Bearer",
-		ExpiresIn:    15 * 60,
+		ExpiresIn:    int(h.tokens.AccessTTL().Seconds()),
 	})
 }
 
@@ -61,7 +75,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.svc.Login(r.Context(), service.LoginInput{
+	result, err := h.authSvc.Login(r.Context(), service.LoginInput{
 		Email:    req.Email,
 		Password: req.Password,
 	})
@@ -75,6 +89,44 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		AccessToken:  result.AccessToken,
 		RefreshToken: result.RefreshToken,
 		TokenType:    "Bearer",
-		ExpiresIn:    15 * 60,
+		ExpiresIn:    int(h.tokens.AccessTTL().Seconds()),
 	})
+}
+
+func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
+	var req dto.RefreshRequest
+	if err := httputil.DecodeJSON(r, &req); err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+
+	result, err := h.authSvc.Refresh(r.Context(), req.RefreshToken)
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, dto.AuthResponse{
+		User:         dto.FromDomain(result.User),
+		AccessToken:  result.AccessToken,
+		RefreshToken: result.RefreshToken,
+		TokenType:    "Bearer",
+		ExpiresIn:    int(h.tokens.AccessTTL().Seconds()),
+	})
+}
+
+func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		httputil.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "no auth claims")
+		return
+	}
+
+	user, err := h.userSvc.GetByID(r.Context(), claims.UserID)
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, dto.FromDomain(user))
 }

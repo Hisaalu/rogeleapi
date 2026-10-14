@@ -22,6 +22,7 @@ type RouterDeps struct {
 	Repos   *repository.Repositories
 	Tokens  *auth.TokenManager
 	AuthSvc *service.AuthService
+	UserSvc *service.UserService
 }
 
 func NewRouter(deps RouterDeps) http.Handler {
@@ -37,11 +38,17 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Get("/health", health.Check)
 
 	r.Route("/api/v1", func(r chi.Router) {
-		authHandler := handler.NewAuthHandler(deps.AuthSvc, deps.Log)
+		authHandler := handler.NewAuthHandler(deps.AuthSvc, deps.UserSvc, deps.Tokens, deps.Log)
+
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/register", authHandler.Register)
 			r.Post("/login", authHandler.Login)
+			r.Post("/refresh", authHandler.Refresh)
 
+			r.Group(func(r chi.Router) {
+				r.Use(middleware.Authenticate(deps.Tokens))
+				r.Get("/me", authHandler.Me)
+			})
 		})
 	})
 
