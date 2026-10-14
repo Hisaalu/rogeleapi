@@ -32,3 +32,11 @@ airtel:
   client_id: ""
   client_secret: ""
   callback_url: ""
+
+r2:
+  account_id: ""
+  access_key_id: ""
+  secret_access_key: ""
+  bucket: ""
+  public_url: ""
+  endpoint: ""

@@ -17,20 +17,21 @@ import (
 )
 
 type RouterDeps struct {
-	Log         *slog.Logger
-	Version     string
-	DB          *sql.DB
-	Repos       *repository.Repositories
-	Tokens      *auth.TokenManager
-	AuthSvc     *service.AuthService
-	UserSvc     *service.UserService
-	LessonSvc   *service.LessonService
-	HomeworkSvc *service.HomeworkService
-	QuizSvc     *service.QuizService
-	SubSvc      *service.SubscriptionService
-	PaySvc      *service.PaymentService
-	CRUDConfig  *crud.Config
-	CRUDRepo    *crud.Repository
+	Log           *slog.Logger
+	Version       string
+	DB            *sql.DB
+	Repos         *repository.Repositories
+	Tokens        *auth.TokenManager
+	AuthSvc       *service.AuthService
+	UserSvc       *service.UserService
+	LessonSvc     *service.LessonService
+	HomeworkSvc   *service.HomeworkService
+	QuizSvc       *service.QuizService
+	SubSvc        *service.SubscriptionService
+	PaySvc        *service.PaymentService
+	CRUDConfig    *crud.Config
+	CRUDRepo      *crud.Repository
+	UploadHandler *handler.UploadHandler
 }
 
 func NewRouter(deps RouterDeps) http.Handler {
@@ -140,6 +141,13 @@ func NewRouter(deps RouterDeps) http.Handler {
 		webhookHandler := handler.NewWebhookHandler(deps.PaySvc, deps.Log)
 		r.Post("/webhooks/mtn", webhookHandler.MTN)
 		r.Post("/webhooks/airtel", webhookHandler.Airtel)
+
+		if deps.UploadHandler != nil {
+			r.Route("/uploads", func(r chi.Router) {
+				r.Use(middleware.Authenticate(deps.Tokens))
+				r.Post("/presign", deps.UploadHandler.Presign)
+			})
+		}
 
 		if deps.CRUDConfig != nil && deps.CRUDRepo != nil {
 			crud.Mount(r, deps.CRUDConfig, deps.CRUDRepo, deps.Tokens, deps.Log)

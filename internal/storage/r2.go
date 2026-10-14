@@ -1,0 +1,54 @@
+package storage
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+
+	"github.com/Hisaalu/rogele/internal/config"
+)
+
+type R2Client struct {
+	bucket    string
+	publicURL string
+	presigner *s3.PresignClient
+}
+
+func NewR2Client(ctx context.Context, cfg config.R2Config) (*R2Client, error) {
+	if !cfg.Enabled() {
+		return nil, fmt.Errorf("r2 is not configured")
+	}
+
+	awsCfg, err := awsconfig.LoadDefaultConfig(ctx,
+		awsconfig.WithRegion("auto"),
+		awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(
+				cfg.AccessKeyID,
+				cfg.SecretAccessKey,
+				"",
+			),
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("load aws config: %w", err)
+	}
+
+	client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
+		o.BaseEndpoint = aws.String(cfg.Endpoint)
+		o.UsePathStyle = true
+	})
+
+	return &R2Client{
+		bucket:    cfg.Bucket,
+		publicURL: cfg.PublicURL,
+		presigner: s3.NewPresignClient(client),
+	}, nil
+}
+
+func (c *R2Client) PublicURL(key string) string {
+	return fmt.Sprintf("%s/%s", c.publicURL, key)
+}

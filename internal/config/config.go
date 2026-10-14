@@ -18,6 +18,7 @@ type Config struct {
 	JWT      JWTConfig
 	Momo     MomoConfig
 	Airtel   AirtelConfig
+	R2       R2Config
 }
 
 type AppConfig struct {
@@ -75,6 +76,19 @@ type AirtelConfig struct {
 
 func (a AirtelConfig) Enabled() bool {
 	return a.BaseURL != "" && a.ClientID != "" && a.ClientSecret != ""
+}
+
+type R2Config struct {
+	AccountID       string
+	AccessKeyID     string
+	SecretAccessKey string
+	Bucket          string
+	PublicURL       string
+	Endpoint        string
+}
+
+func (r R2Config) Enabled() bool {
+	return r.AccessKeyID != "" && r.SecretAccessKey != "" && r.Bucket != "" && r.Endpoint != ""
 }
 
 func Load() (*Config, error) {
@@ -142,14 +156,18 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("JWT secret is empty — set ROGELEDB_JWT_SECRET in .env")
 	}
 
+	if cfg.Momo.Currency == "" {
+		cfg.Momo.Currency = "EUR"
+	}
+
 	if cfg.App.Env == "development" {
 		fmt.Fprintf(os.Stderr,
-			"[config] env=%s db=%s:%d/%s user=%s max_open=%d max_idle=%d momo=%v airtel=%v\n",
+			"[config] env=%s db=%s:%d/%s user=%s max_open=%d max_idle=%d momo=%v airtel=%v r2=%v\n",
 			cfg.App.Env,
 			cfg.Database.Host, cfg.Database.Port, cfg.Database.Name,
 			cfg.Database.User,
 			cfg.Database.MaxOpenConns, cfg.Database.MaxIdleConns,
-			cfg.Momo.Enabled(), cfg.Airtel.Enabled(),
+			cfg.Momo.Enabled(), cfg.Airtel.Enabled(), cfg.R2.Enabled(),
 		)
 	}
 
@@ -177,11 +195,17 @@ func applyStringEnv(cfg *Config) {
 	set("ROGELEDB_MTN_MOMO_API_KEY", &cfg.Momo.APIKey)
 	set("ROGELEDB_MTN_MOMO_TARGET_ENV", &cfg.Momo.TargetEnv)
 	set("ROGELEDB_MTN_MOMO_CALLBACK_URL", &cfg.Momo.CallbackURL)
+	set("ROGELEDB_MTN_MOMO_CURRENCY", &cfg.Momo.Currency)
 	set("ROGELEDB_AIRTEL_BASE_URL", &cfg.Airtel.BaseURL)
 	set("ROGELEDB_AIRTEL_CLIENT_ID", &cfg.Airtel.ClientID)
 	set("ROGELEDB_AIRTEL_CLIENT_SECRET", &cfg.Airtel.ClientSecret)
 	set("ROGELEDB_AIRTEL_CALLBACK_URL", &cfg.Airtel.CallbackURL)
-	set("ROGELEDB_MTN_MOMO_CURRENCY", &cfg.Momo.Currency)
+	set("ROGELEDB_R2_ACCOUNT_ID", &cfg.R2.AccountID)
+	set("ROGELEDB_R2_ACCESS_KEY_ID", &cfg.R2.AccessKeyID)
+	set("ROGELEDB_R2_SECRET_ACCESS_KEY", &cfg.R2.SecretAccessKey)
+	set("ROGELEDB_R2_BUCKET", &cfg.R2.Bucket)
+	set("ROGELEDB_R2_PUBLIC_URL", &cfg.R2.PublicURL)
+	set("ROGELEDB_R2_ENDPOINT", &cfg.R2.Endpoint)
 }
 
 func applyIntEnv(cfg *Config) {

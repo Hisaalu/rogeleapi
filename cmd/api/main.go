@@ -9,12 +9,14 @@ import (
 	"github.com/Hisaalu/rogele/internal/config"
 	"github.com/Hisaalu/rogele/internal/crud"
 	"github.com/Hisaalu/rogele/internal/db"
+	"github.com/Hisaalu/rogele/internal/handler"
 	"github.com/Hisaalu/rogele/internal/logger"
 	"github.com/Hisaalu/rogele/internal/payments"
 	"github.com/Hisaalu/rogele/internal/repository"
 	"github.com/Hisaalu/rogele/internal/repository/postgres"
 	"github.com/Hisaalu/rogele/internal/server"
 	"github.com/Hisaalu/rogele/internal/service"
+	"github.com/Hisaalu/rogele/internal/storage"
 )
 
 var version = "dev"
@@ -70,7 +72,6 @@ func run() error {
 	lessonSvc := service.NewLessonService(repos.Lesson, repos.User)
 	homeworkSvc := service.NewHomeworkService(repos.Homework, repos.User)
 	quizSvc := service.NewQuizService(repos.Quiz, repos.User)
-
 	subSvc := service.NewSubscriptionService(repos.Subscription, planRepo, repos.FreeTrial, repos.User, repos.Payment)
 
 	providers := payments.NewRegistry(cfg.Momo, cfg.Airtel)
@@ -86,21 +87,34 @@ func run() error {
 
 	crudRepo := crud.NewRepository(database)
 
+	var uploadHandler *handler.UploadHandler
+	if cfg.R2.Enabled() {
+		r2Client, err := storage.NewR2Client(ctx, cfg.R2)
+		if err != nil {
+			return fmt.Errorf("init r2: %w", err)
+		}
+		uploadHandler = handler.NewUploadHandler(r2Client, log)
+		log.Info("r2 storage enabled", "bucket", cfg.R2.Bucket)
+	} else {
+		log.Warn("r2 storage is not configured — upload endpoints disabled")
+	}
+
 	router := server.NewRouter(server.RouterDeps{
-		Log:         log,
-		Version:     version,
-		DB:          database,
-		Repos:       repos,
-		Tokens:      tokenManager,
-		AuthSvc:     authSvc,
-		UserSvc:     userSvc,
-		LessonSvc:   lessonSvc,
-		HomeworkSvc: homeworkSvc,
-		QuizSvc:     quizSvc,
-		SubSvc:      subSvc,
-		PaySvc:      paySvc,
-		CRUDConfig:  crudConfig,
-		CRUDRepo:    crudRepo,
+		Log:           log,
+		Version:       version,
+		DB:            database,
+		Repos:         repos,
+		Tokens:        tokenManager,
+		AuthSvc:       authSvc,
+		UserSvc:       userSvc,
+		LessonSvc:     lessonSvc,
+		HomeworkSvc:   homeworkSvc,
+		QuizSvc:       quizSvc,
+		SubSvc:        subSvc,
+		PaySvc:        paySvc,
+		CRUDConfig:    crudConfig,
+		CRUDRepo:      crudRepo,
+		UploadHandler: uploadHandler,
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.App.Port)
