@@ -68,6 +68,8 @@ func run() error {
 	planRepo := postgres.NewPlanRepo(database)
 	emailRepo := postgres.NewEmailRepo(database)
 	settingsRepo := postgres.NewSettingsRepo(database)
+	adminStatsRepo := postgres.NewAdminStatsRepo(database)
+	adminHandler := handler.NewAdminHandler(adminStatsRepo, log)
 
 	tokenManager := auth.NewTokenManager(
 		cfg.JWT.Secret,
@@ -164,6 +166,7 @@ func run() error {
 		CRUDConfig:    crudConfig,
 		CRUDRepo:      crudRepo,
 		UploadHandler: uploadHandler,
+		AdminHandler:  adminHandler,
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.App.Port)

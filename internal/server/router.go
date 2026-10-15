@@ -34,6 +34,7 @@ type RouterDeps struct {
 	CRUDConfig    *crud.Config
 	CRUDRepo      *crud.Repository
 	UploadHandler *handler.UploadHandler
+	AdminHandler  *handler.AdminHandler
 }
 
 func NewRouter(deps RouterDeps) http.Handler {
@@ -163,6 +164,16 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Route("/uploads", func(r chi.Router) {
 				r.Use(middleware.Authenticate(deps.Tokens))
 				r.Post("/presign", deps.UploadHandler.Presign)
+			})
+		}
+
+		if deps.AdminHandler != nil {
+			r.Route("/admin", func(r chi.Router) {
+				r.Use(middleware.Authenticate(deps.Tokens))
+				r.Get("/stats", deps.AdminHandler.Overview)
+				r.Get("/activity", deps.AdminHandler.RecentActivity)
+				r.Get("/recent-signups", deps.AdminHandler.RecentSignups)
+				r.Get("/recent-payments", deps.AdminHandler.RecentPayments)
 			})
 		}
 
