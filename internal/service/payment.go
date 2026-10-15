@@ -33,6 +33,7 @@ type PaymentService struct {
 	providers     *payments.Registry
 	users         repository.UserRepository
 	mailer        *mailer.Service
+	notifications *NotificationService
 	log           *slog.Logger
 	currency      string
 }
@@ -44,6 +45,7 @@ func NewPaymentService(
 	providers *payments.Registry,
 	users repository.UserRepository,
 	mailerSvc *mailer.Service,
+	notifications *NotificationService,
 	log *slog.Logger,
 	currency string,
 ) *PaymentService {
@@ -54,6 +56,7 @@ func NewPaymentService(
 		providers:     providers,
 		users:         users,
 		mailer:        mailerSvc,
+		notifications: notifications,
 		log:           log,
 		currency:      currency,
 	}
@@ -268,8 +271,42 @@ func (s *PaymentService) applyProviderStatus(
 	if newStatus == domain.PaymentCompleted {
 		s.sendPaymentConfirmation(ctx, p)
 	}
+	s.notifyPaymentStatus(ctx, p, newStatus)
 
 	return nil
+}
+
+func (s *PaymentService) notifyPaymentStatus(ctx context.Context, p *domain.Payment, status domain.PaymentStatus) {
+	if s.notifications == nil || p.UserID == nil {
+		return
+	}
+
+	link := "/subscription"
+
+	var title, message string
+	switch status {
+	case domain.PaymentCompleted:
+		title = "Payment received"
+		amount := 0.0
+		if p.Amount != nil {
+			amount = *p.Amount
+		}
+		message = fmt.Sprintf("Your payment of %s %.2f was successful.", s.currency, amount)
+	case domain.PaymentFailed:
+		title = "Payment failed"
+		message = "Your recent payment did not go through. Please try again."
+	default:
+		return
+	}
+
+	var notifType domain.NotificationType
+	if status == domain.PaymentCompleted {
+		notifType = domain.NotificationTypePayment
+	} else {
+		notifType = domain.NotificationTypePayment
+	}
+
+	_ = s.notifications.NotifyUser(ctx, *p.UserID, notifType, title, message, &link)
 }
 
 func (s *PaymentService) sendPaymentConfirmation(ctx context.Context, p *domain.Payment) {

@@ -17,25 +17,27 @@ import (
 )
 
 type RouterDeps struct {
-	Log              *slog.Logger
-	Version          string
-	DB               *sql.DB
-	Repos            *repository.Repositories
-	Tokens           *auth.TokenManager
-	AuthSvc          *service.AuthService
-	UserSvc          *service.UserService
-	LessonSvc        *service.LessonService
-	HomeworkSvc      *service.HomeworkService
-	QuizSvc          *service.QuizService
-	SubSvc           *service.SubscriptionService
-	PaySvc           *service.PaymentService
-	CampaignSvc      *service.CampaignService
-	ConfigHandler    *handler.ConfigHandler
-	AdminHandler     *handler.AdminHandler
-	AdminUserHandler *handler.AdminUserHandler
-	CRUDConfig       *crud.Config
-	CRUDRepo         *crud.Repository
-	UploadHandler    *handler.UploadHandler
+	Log                 *slog.Logger
+	Version             string
+	DB                  *sql.DB
+	Repos               *repository.Repositories
+	Tokens              *auth.TokenManager
+	AuthSvc             *service.AuthService
+	UserSvc             *service.UserService
+	LessonSvc           *service.LessonService
+	HomeworkSvc         *service.HomeworkService
+	QuizSvc             *service.QuizService
+	SubSvc              *service.SubscriptionService
+	PaySvc              *service.PaymentService
+	CampaignSvc         *service.CampaignService
+	NotificationSvc     *service.NotificationService
+	ConfigHandler       *handler.ConfigHandler
+	AdminHandler        *handler.AdminHandler
+	AdminUserHandler    *handler.AdminUserHandler
+	NotificationHandler *handler.NotificationHandler
+	CRUDConfig          *crud.Config
+	CRUDRepo            *crud.Repository
+	UploadHandler       *handler.UploadHandler
 }
 
 func NewRouter(deps RouterDeps) http.Handler {
@@ -168,7 +170,34 @@ func NewRouter(deps RouterDeps) http.Handler {
 			})
 		}
 
-		if deps.AdminHandler != nil || deps.AdminUserHandler != nil {
+		if deps.CampaignSvc != nil {
+			campaignHandler := handler.NewCampaignHandler(deps.CampaignSvc, deps.Log)
+			r.Route("/admin/email-campaigns", func(r chi.Router) {
+				r.Use(middleware.Authenticate(deps.Tokens))
+				r.Get("/", campaignHandler.List)
+				r.Post("/", campaignHandler.Create)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", campaignHandler.Get)
+					r.Patch("/", campaignHandler.Update)
+					r.Delete("/", campaignHandler.Delete)
+					r.Post("/preview", campaignHandler.Preview)
+					r.Post("/send", campaignHandler.Send)
+					r.Get("/logs", campaignHandler.Logs)
+				})
+			})
+		}
+
+		if deps.NotificationHandler != nil {
+			r.Route("/notifications", func(r chi.Router) {
+				r.Use(middleware.Authenticate(deps.Tokens))
+				r.Get("/me", deps.NotificationHandler.ListMine)
+				r.Get("/me/unread-count", deps.NotificationHandler.UnreadCount)
+				r.Post("/{id}/read", deps.NotificationHandler.MarkRead)
+				r.Post("/read-all", deps.NotificationHandler.MarkAllRead)
+			})
+		}
+
+		if deps.AdminHandler != nil || deps.AdminUserHandler != nil || deps.NotificationHandler != nil {
 			r.Route("/admin", func(r chi.Router) {
 				r.Use(middleware.Authenticate(deps.Tokens))
 
@@ -185,23 +214,10 @@ func NewRouter(deps RouterDeps) http.Handler {
 					r.Post("/users/{id}/force-reset", deps.AdminUserHandler.ForcePasswordReset)
 					r.Post("/users/{id}/set-password", deps.AdminUserHandler.SetPassword)
 				}
-			})
-		}
 
-		if deps.CampaignSvc != nil {
-			campaignHandler := handler.NewCampaignHandler(deps.CampaignSvc, deps.Log)
-			r.Route("/admin/email-campaigns", func(r chi.Router) {
-				r.Use(middleware.Authenticate(deps.Tokens))
-				r.Get("/", campaignHandler.List)
-				r.Post("/", campaignHandler.Create)
-				r.Route("/{id}", func(r chi.Router) {
-					r.Get("/", campaignHandler.Get)
-					r.Patch("/", campaignHandler.Update)
-					r.Delete("/", campaignHandler.Delete)
-					r.Post("/preview", campaignHandler.Preview)
-					r.Post("/send", campaignHandler.Send)
-					r.Get("/logs", campaignHandler.Logs)
-				})
+				if deps.NotificationHandler != nil {
+					r.Post("/notifications/broadcast", deps.NotificationHandler.Broadcast)
+				}
 			})
 		}
 

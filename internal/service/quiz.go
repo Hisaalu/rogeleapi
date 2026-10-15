@@ -52,12 +52,21 @@ type AnswerInput struct {
 }
 
 type QuizService struct {
-	quizzes repository.QuizRepository
-	users   repository.UserRepository
+	quizzes       repository.QuizRepository
+	users         repository.UserRepository
+	notifications *NotificationService
 }
 
-func NewQuizService(quizzes repository.QuizRepository, users repository.UserRepository) *QuizService {
-	return &QuizService{quizzes: quizzes, users: users}
+func NewQuizService(
+	quizzes repository.QuizRepository,
+	users repository.UserRepository,
+	notifications *NotificationService,
+) *QuizService {
+	return &QuizService{
+		quizzes:       quizzes,
+		users:         users,
+		notifications: notifications,
+	}
 }
 
 func (s *QuizService) Create(ctx context.Context, teacherID int64, in CreateQuizInput) (*domain.Quiz, error) {
@@ -162,6 +171,15 @@ func (s *QuizService) Update(ctx context.Context, id int64, actor ActorContext, 
 	if in.EndDate != nil {
 		q.EndDate = in.EndDate
 	}
+	wasPublished := q.IsPublished
+
+	if in.Title != nil {
+		q.Title = *in.Title
+	}
+	if in.Description != nil {
+		q.Description = in.Description
+	}
+	// ... other fields ...
 	if in.IsPublished != nil {
 		q.IsPublished = *in.IsPublished
 		if *in.IsPublished {
@@ -170,10 +188,20 @@ func (s *QuizService) Update(ctx context.Context, id int64, actor ActorContext, 
 			q.Status = "draft"
 		}
 	}
+
 	if err := s.quizzes.Update(ctx, q); err != nil {
 		return nil, err
 	}
-	return s.quizzes.GetByID(ctx, id)
+
+	updated, err := s.quizzes.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if in.IsPublished != nil && *in.IsPublished && !wasPublished {
+		s.notifyNewQuiz(ctx, updated)
+	}
+	return updated, nil
 }
 
 func (s *QuizService) Delete(ctx context.Context, id int64, actor ActorContext) error {
@@ -517,4 +545,30 @@ func (s *QuizService) DeleteAllAttempts(ctx context.Context, quizID int64, actor
 		return err
 	}
 	return s.quizzes.DeleteAllAttempts(ctx, quizID)
+}
+
+func (s *QuizService) notifyNewQuiz(ctx context.Context, q *domain.Quiz) {
+	if s.notifications == nil || q.ClassID == nil {
+		return
+	}
+
+	learners, err := s.users.List(ctx, repository.UserFilter{
+		Role:    rolePtr(domain.RoleLearner),
+		ClassID: q.ClassID,
+		Limit:   500,
+	})
+	if err != nil || len(learners) == 0 {
+		return
+	}
+
+	ids := make([]int64, 0, len(learners))
+	for _, u := range learners {
+		ids = append(ids, u.ID)
+	}
+
+	link := fmt.Sprintf("/quizzes/%d", q.ID)
+	title := "New quiz"
+	message := q.Title
+
+	_ = s.notifications.NotifyUsers(ctx, ids, domain.NotificationTypeQuiz, title, message, &link)
 }

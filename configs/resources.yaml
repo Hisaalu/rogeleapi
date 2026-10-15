@@ -72,21 +72,6 @@ resources:
       body:       { type: string, writable: true, required: true }
       created_by: { type: integer, writable: true }
 
-  - name: notifications
-    table: notifications
-    primary_key: id
-    searchable: [title, message]
-    filterable: [type, is_read]
-    default_sort: [-created_at]
-    read_roles: [admin, teacher, learner, external]
-    write_roles: [admin]
-    columns:
-      type:    { type: string,  writable: true, required: true }
-      title:   { type: string,  writable: true, required: true }
-      message: { type: string,  writable: true, required: true }
-      link:    { type: string,  writable: true }
-      is_read: { type: boolean, writable: true }
-
   - name: users
     table: users
     primary_key: id

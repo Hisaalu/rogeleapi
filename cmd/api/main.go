@@ -63,6 +63,7 @@ func run() error {
 		FreeTrial:     postgres.NewFreeTrialRepo(database),
 		Payment:       postgres.NewPaymentRepo(database),
 		PasswordReset: postgres.NewPasswordResetRepo(database),
+		Notification:  postgres.NewNotificationRepo(database),
 	}
 
 	planRepo := postgres.NewPlanRepo(database)
@@ -86,6 +87,7 @@ func run() error {
 	}
 
 	mailerSvc := mailer.NewService(sender, emailRepo, log, cfg.App.Name, cfg.Email.WebBaseURL)
+	notificationSvc := service.NewNotificationService(repos.Notification, log)
 
 	if err := seedEmailTemplates(ctx, emailRepo, log); err != nil {
 		log.Warn("email template seed failed", "error", err)
@@ -93,7 +95,13 @@ func run() error {
 
 	go mailerSvc.Run(ctx)
 
-	expiryScheduler := scheduler.NewExpiryScheduler(database, mailerSvc, log, cfg.Email.WebBaseURL)
+	expiryScheduler := scheduler.NewExpiryScheduler(
+		database,
+		mailerSvc,
+		notificationSvc,
+		log,
+		cfg.Email.WebBaseURL,
+	)
 	go expiryScheduler.Run(ctx)
 
 	authSvc := service.NewAuthService(
@@ -104,9 +112,9 @@ func run() error {
 		tokenManager,
 	)
 	userSvc := service.NewUserService(repos.User)
-	lessonSvc := service.NewLessonService(repos.Lesson, repos.User)
-	homeworkSvc := service.NewHomeworkService(repos.Homework, repos.User)
-	quizSvc := service.NewQuizService(repos.Quiz, repos.User)
+	lessonSvc := service.NewLessonService(repos.Lesson, repos.User, notificationSvc)
+	homeworkSvc := service.NewHomeworkService(repos.Homework, repos.User, notificationSvc)
+	quizSvc := service.NewQuizService(repos.Quiz, repos.User, notificationSvc)
 	subSvc := service.NewSubscriptionService(repos.Subscription, planRepo, repos.FreeTrial, repos.User, repos.Payment)
 
 	providers := payments.NewRegistry(cfg.Momo, cfg.Airtel)
@@ -119,6 +127,7 @@ func run() error {
 		providers,
 		repos.User,
 		mailerSvc,
+		notificationSvc,
 		log,
 		cfg.Momo.Currency,
 	)
@@ -156,27 +165,30 @@ func run() error {
 		cfg.Email.WebBaseURL,
 		log,
 	)
+	notificationHandler := handler.NewNotificationHandler(notificationSvc, log)
 
 	router := server.NewRouter(server.RouterDeps{
-		Log:              log,
-		Version:          version,
-		DB:               database,
-		Repos:            repos,
-		Tokens:           tokenManager,
-		AuthSvc:          authSvc,
-		UserSvc:          userSvc,
-		LessonSvc:        lessonSvc,
-		HomeworkSvc:      homeworkSvc,
-		QuizSvc:          quizSvc,
-		SubSvc:           subSvc,
-		PaySvc:           paySvc,
-		CampaignSvc:      campaignSvc,
-		ConfigHandler:    configHandler,
-		AdminHandler:     adminHandler,
-		AdminUserHandler: adminUserHandler,
-		CRUDConfig:       crudConfig,
-		CRUDRepo:         crudRepo,
-		UploadHandler:    uploadHandler,
+		Log:                 log,
+		Version:             version,
+		DB:                  database,
+		Repos:               repos,
+		Tokens:              tokenManager,
+		AuthSvc:             authSvc,
+		UserSvc:             userSvc,
+		LessonSvc:           lessonSvc,
+		HomeworkSvc:         homeworkSvc,
+		QuizSvc:             quizSvc,
+		SubSvc:              subSvc,
+		PaySvc:              paySvc,
+		CampaignSvc:         campaignSvc,
+		NotificationSvc:     notificationSvc,
+		ConfigHandler:       configHandler,
+		AdminHandler:        adminHandler,
+		AdminUserHandler:    adminUserHandler,
+		NotificationHandler: notificationHandler,
+		CRUDConfig:          crudConfig,
+		CRUDRepo:            crudRepo,
+		UploadHandler:       uploadHandler,
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.App.Port)

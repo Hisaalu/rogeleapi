@@ -29,12 +29,21 @@ type UpdateLessonInput struct {
 }
 
 type LessonService struct {
-	lessons repository.LessonRepository
-	users   repository.UserRepository
+	lessons       repository.LessonRepository
+	users         repository.UserRepository
+	notifications *NotificationService
 }
 
-func NewLessonService(lessons repository.LessonRepository, users repository.UserRepository) *LessonService {
-	return &LessonService{lessons: lessons, users: users}
+func NewLessonService(
+	lessons repository.LessonRepository,
+	users repository.UserRepository,
+	notifications *NotificationService,
+) *LessonService {
+	return &LessonService{
+		lessons:       lessons,
+		users:         users,
+		notifications: notifications,
+	}
 }
 
 func (s *LessonService) Create(ctx context.Context, teacherID int64, in CreateLessonInput) (*domain.Lesson, error) {
@@ -149,11 +158,45 @@ func (s *LessonService) Publish(ctx context.Context, id int64, actor ActorContex
 	if err := canEditLesson(l, actor); err != nil {
 		return nil, err
 	}
+	wasPublished := l.IsPublished
 	l.IsPublished = published
 	if err := s.lessons.Update(ctx, l); err != nil {
 		return nil, err
 	}
-	return s.lessons.GetByID(ctx, id)
+	updated, err := s.lessons.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if published && !wasPublished {
+		s.notifyNewLesson(ctx, updated)
+	}
+	return updated, nil
+}
+
+func (s *LessonService) notifyNewLesson(ctx context.Context, l *domain.Lesson) {
+	if s.notifications == nil || l.ClassID == nil {
+		return
+	}
+
+	learners, err := s.users.List(ctx, repository.UserFilter{
+		Role:    rolePtr(domain.RoleLearner),
+		ClassID: l.ClassID,
+		Limit:   500,
+	})
+	if err != nil || len(learners) == 0 {
+		return
+	}
+
+	ids := make([]int64, 0, len(learners))
+	for _, u := range learners {
+		ids = append(ids, u.ID)
+	}
+
+	link := fmt.Sprintf("/lessons/%d", l.ID)
+	title := "New lesson"
+	message := l.Title
+
+	_ = s.notifications.NotifyUsers(ctx, ids, domain.NotificationTypeLesson, title, message, &link)
 }
 
 func (s *LessonService) Approve(ctx context.Context, id int64, actor ActorContext, approved bool) (*domain.Lesson, error) {

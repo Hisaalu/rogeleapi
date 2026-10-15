@@ -175,6 +175,24 @@ type PasswordResetRepository interface {
 	CountRecent(ctx context.Context, userID int64, within time.Duration) (int, error)
 }
 
+type NotificationRepository interface {
+	Create(ctx context.Context, n *domain.Notification) (*domain.Notification, error)
+	CreateBulk(ctx context.Context, userIDs []int64, n *domain.Notification) (int, error)
+	ListForUser(ctx context.Context, userID int64, limit, offset int) ([]*domain.Notification, error)
+	CountUnreadForUser(ctx context.Context, userID int64) (int, error)
+	MarkRead(ctx context.Context, id, userID int64) error
+	MarkAllRead(ctx context.Context, userID int64) (int, error)
+	AdminList(ctx context.Context, f AdminListFilter) ([]*domain.Notification, error)
+	CountSentBroadcast(ctx context.Context) (int, error)
+}
+
+type AdminListFilter struct {
+	UserID *int64
+	Type   *string
+	Limit  int
+	Offset int
+}
+
 type Repositories struct {
 	User          UserRepository
 	Lesson        LessonRepository
@@ -184,4 +202,5 @@ type Repositories struct {
 	FreeTrial     FreeTrialRepository
 	Payment       PaymentRepository
 	PasswordReset PasswordResetRepository
+	Notification  NotificationRepository
 }

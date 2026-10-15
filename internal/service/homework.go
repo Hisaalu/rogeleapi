@@ -33,12 +33,21 @@ type GradeInput struct {
 }
 
 type HomeworkService struct {
-	hw    repository.HomeworkRepository
-	users repository.UserRepository
+	hw            repository.HomeworkRepository
+	users         repository.UserRepository
+	notifications *NotificationService
 }
 
-func NewHomeworkService(hw repository.HomeworkRepository, users repository.UserRepository) *HomeworkService {
-	return &HomeworkService{hw: hw, users: users}
+func NewHomeworkService(
+	hw repository.HomeworkRepository,
+	users repository.UserRepository,
+	notifications *NotificationService,
+) *HomeworkService {
+	return &HomeworkService{
+		hw:            hw,
+		users:         users,
+		notifications: notifications,
+	}
 }
 
 func (s *HomeworkService) Create(ctx context.Context, teacherID int64, in CreateHomeworkInput) (*domain.Homework, error) {
@@ -54,7 +63,12 @@ func (s *HomeworkService) Create(ctx context.Context, teacherID int64, in Create
 		DueDate:     in.DueDate,
 		IsActive:    true,
 	}
-	return s.hw.Create(ctx, hw)
+	created, err := s.hw.Create(ctx, hw)
+	if err != nil {
+		return nil, err
+	}
+	s.notifyNewHomework(ctx, created)
+	return created, nil
 }
 
 func (s *HomeworkService) GetByID(ctx context.Context, id int64, actor ActorContext) (*domain.Homework, error) {
@@ -340,4 +354,34 @@ func (s *HomeworkService) DeleteSubmissionFile(ctx context.Context, submissionID
 		return domain.ErrForbidden
 	}
 	return s.hw.DeleteSubmissionFile(ctx, fileID)
+}
+
+func (s *HomeworkService) notifyNewHomework(ctx context.Context, hw *domain.Homework) {
+	if s.notifications == nil {
+		return
+	}
+
+	learners, err := s.users.List(ctx, repository.UserFilter{
+		Role:    rolePtr(domain.RoleLearner),
+		ClassID: &hw.ClassID,
+		Limit:   500,
+	})
+	if err != nil || len(learners) == 0 {
+		return
+	}
+
+	ids := make([]int64, 0, len(learners))
+	for _, u := range learners {
+		ids = append(ids, u.ID)
+	}
+
+	link := fmt.Sprintf("/homework/%d", hw.ID)
+	title := "New homework"
+	message := fmt.Sprintf("%s — due %s", hw.Title, hw.DueDate.Format("Jan 2, 2006"))
+
+	_ = s.notifications.NotifyUsers(ctx, ids, domain.NotificationTypeHomework, title, message, &link)
+}
+
+func rolePtr(r domain.UserRole) *domain.UserRole {
+	return &r
 }

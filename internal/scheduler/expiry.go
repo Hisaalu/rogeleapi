@@ -3,25 +3,46 @@ package scheduler
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/Hisaalu/rogele/internal/domain"
 	"github.com/Hisaalu/rogele/internal/mailer"
 )
 
-type ExpiryScheduler struct {
-	db     *sql.DB
-	mailer *mailer.Service
-	log    *slog.Logger
-	webURL string
+type Notifier interface {
+	NotifyUser(
+		ctx context.Context,
+		userID int64,
+		notifType domain.NotificationType,
+		title string,
+		message string,
+		link *string,
+	) error
 }
 
-func NewExpiryScheduler(db *sql.DB, mailerSvc *mailer.Service, log *slog.Logger, webURL string) *ExpiryScheduler {
+type ExpiryScheduler struct {
+	db            *sql.DB
+	mailer        *mailer.Service
+	notifications Notifier
+	log           *slog.Logger
+	webURL        string
+}
+
+func NewExpiryScheduler(
+	db *sql.DB,
+	mailerSvc *mailer.Service,
+	notifications Notifier,
+	log *slog.Logger,
+	webURL string,
+) *ExpiryScheduler {
 	return &ExpiryScheduler{
-		db:     db,
-		mailer: mailerSvc,
-		log:    log,
-		webURL: webURL,
+		db:            db,
+		mailer:        mailerSvc,
+		notifications: notifications,
+		log:           log,
+		webURL:        webURL,
 	}
 }
 
@@ -96,7 +117,7 @@ func (s *ExpiryScheduler) sendSubscriptionReminders(ctx context.Context) {
 			"FirstName": name,
 			"EndDate":   it.endDate.Format("January 2, 2006"),
 			"DaysLeft":  daysLeft,
-			"RenewLink": s.webURL + "/subscribe",
+			"RenewLink": s.webURL + "/subscription",
 		}
 
 		var firstNamePtr *string
@@ -107,6 +128,13 @@ func (s *ExpiryScheduler) sendSubscriptionReminders(ctx context.Context) {
 		if _, err := s.mailer.Enqueue(ctx, "subscription_expiring", it.email, firstNamePtr, vars); err != nil {
 			s.log.Warn("subscription reminder enqueue failed", "sub_id", it.subID, "error", err)
 			continue
+		}
+
+		if s.notifications != nil {
+			link := s.webURL + "/subscription"
+			title := "Subscription expiring soon"
+			msg := fmt.Sprintf("Your subscription expires in %d day(s). Renew to keep full access.", daysLeft)
+			_ = s.notifications.NotifyUser(ctx, it.userID, domain.NotificationTypeSubscription, title, msg, &link)
 		}
 
 		if _, err := s.db.ExecContext(ctx,
@@ -169,7 +197,7 @@ func (s *ExpiryScheduler) sendTrialReminders(ctx context.Context) {
 			"FirstName":     name,
 			"EndDate":       it.endDate.Format("January 2, 2006"),
 			"DaysLeft":      daysLeft,
-			"SubscribeLink": s.webURL + "/subscribe",
+			"SubscribeLink": s.webURL + "/subscription",
 		}
 
 		var firstNamePtr *string
@@ -180,6 +208,13 @@ func (s *ExpiryScheduler) sendTrialReminders(ctx context.Context) {
 		if _, err := s.mailer.Enqueue(ctx, "trial_ending", it.email, firstNamePtr, vars); err != nil {
 			s.log.Warn("trial reminder enqueue failed", "trial_id", it.trialID, "error", err)
 			continue
+		}
+
+		if s.notifications != nil {
+			link := s.webURL + "/subscription"
+			title := "Trial ending soon"
+			msg := fmt.Sprintf("Your free trial ends in %d day(s). Subscribe to keep using the platform.", daysLeft)
+			_ = s.notifications.NotifyUser(ctx, it.userID, domain.NotificationTypeTrial, title, msg, &link)
 		}
 
 		if _, err := s.db.ExecContext(ctx,
