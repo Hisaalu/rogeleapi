@@ -1,332 +1,658 @@
-# ROGELE WEB
+# ROGELE API
 
-The web client for ROGELE, a learning management platform for schools.
+ROGELE is a learning management platform for schools. This repository contains
+the backend HTTP API that serves the web application, the Android application,
+and internal analytics services.
 
-This application is the browser interface for three audiences:
-
-- Administrators, who manage users, classes, subjects, subscription plans, and
-  platform settings.
-- Teachers, who create lessons, assign homework, build quizzes, and grade
-  submissions.
-- Learners and external users, who browse lessons, submit homework, take
-  quizzes, and manage their subscriptions.
-
-The web client communicates exclusively with the ROGELE API. It never connects
-directly to a database or any other backend service.
+The API is written in Go and uses PostgreSQL as its primary datastore. It exposes
+a REST interface for authentication, academic content (lessons, homework,
+quizzes), subscriptions, payments, notifications, and administrative tooling.
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [Tech Stack](#tech-stack)
+- [Architecture](#architecture)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Configuration](#configuration)
-- [Running Locally](#running-locally)
-- [Project Structure](#project-structure)
+- [Running the API](#running-the-api)
+- [Database Migrations](#database-migrations)
+- [Project Layout](#project-layout)
+- [API Reference](#api-reference)
 - [Authentication](#authentication)
-- [Branding and Theming](#branding-and-theming)
+- [Authorization Model](#authorization-model)
+- [File Uploads](#file-uploads)
+- [Payments](#payments)
 - [Notifications](#notifications)
-- [API Communication](#api-communication)
-- [Roles and Routes](#roles-and-routes)
+- [Email](#email)
+- [Error Format](#error-format)
+- [Pagination and Filtering](#pagination-and-filtering)
 - [Development Workflow](#development-workflow)
-- [Building for Production](#building-for-production)
+- [Testing](#testing)
 - [Deployment](#deployment)
 - [License](#license)
 
 ## Overview
 
-The ROGELE Web app is a Next.js application built with the App Router. It
-provides three distinct experiences behind a single authentication system:
+The ROGELE API is a single Go binary that provides:
 
-- `/` and `/dashboard` — the learner and teacher experience
-- `/admin` and sub-pages — the administration panel
-- `/login` and related pages — public authentication flows
+- JWT-based authentication with access and refresh tokens.
+- Role-based access control for four user roles: admin, teacher, learner, and
+  external user.
+- Lesson management with class scoping, publishing, approval, bookmarks, and
+  attached materials.
+- Homework assignment, submission, and grading.
+- Quizzes with question banks, timed attempts, automatic scoring, and resumable
+  sessions.
+- Subscription plans, free trials, subscriptions, and payment processing through
+  MTN Mobile Money and Airtel Money.
+- Notifications with per-user read state, broadcasts, and event hooks across
+  every major subsystem.
+- Email delivery for password resets, payment confirmations, subscription
+  reminders, trial reminders, and administrator-driven campaigns.
+- File uploads to Cloudflare R2 through presigned URLs.
+- A generic, YAML-driven CRUD engine for low-complexity resources.
+- A branded email shell driven by runtime settings.
 
-The layout is responsive, supports light and dark themes, and pulls its
-branding — school name, tagline, logo, and colors — from the API at runtime.
+## Architecture
 
-## Tech Stack
+The service is organized into four layers:
 
-- Next.js 14 (App Router)
-- React 18
-- TypeScript (strict mode)
-- Tailwind CSS
-- Lucide icons
-- React Hook Form with Zod validation
-- TanStack Query for server state
-- shadcn-style UI primitives built on Radix
+1. Handlers receive HTTP requests, decode input, and delegate to services.
+2. Services implement business rules and orchestrate repositories.
+3. Repositories isolate SQL and persistence concerns behind interfaces.
+4. Storage adapters (R2, MTN, Airtel, Resend) talk to external systems.
+
+Long-running work (email delivery, expiry reminders) is handled by background
+workers that run inside the same process. Work is queued in PostgreSQL so that
+the HTTP layer never blocks on network I/O to external providers.
+
+The application is designed so that all clients — web, mobile, analytics —
+communicate exclusively with the API. No client connects directly to the
+database.
 
 ## Requirements
 
-- Node.js 18.17 or later
-- pnpm 9 or later (npm and yarn work too)
+- Go 1.22 or later
+- PostgreSQL 14 or later
+- golang-migrate CLI
+- Docker (optional, for local PostgreSQL)
 
 ## Installation
 
 Clone the repository:
 
-    git clone https://github.com/Hisaalu/rogele-web.git
-    cd rogele-web
+    git clone https://github.com/Hisaalu/rogeleapi.git
+    cd rogeleapi
 
 Install dependencies:
 
-    pnpm install
+    go mod tidy
+
+Install the golang-migrate CLI:
+
+    go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 
 ## Configuration
 
-Configuration lives in `.env.local` at the project root. It is not committed.
+Configuration is provided through a `.env` file at the project root. The
+application loads `.env` on startup and overrides values from
+`configs/config.yaml`. Environment variables take precedence over YAML.
 
-    # Go API base URL (server-side, no trailing slash)
-    ROGELEDB_API_URL=http://localhost:8080
+Create a `.env` file with the following keys:
 
-    # Same URL, exposed to the browser for reference
-    NEXT_PUBLIC_API_URL=http://localhost:8080
+    # Application
+    ROGELEDB_APP_NAME=rogele
+    ROGELEDB_APP_ENV=development
+    ROGELEDB_APP_PORT=8080
 
-    # Session secret used to sign auth cookies
-    SESSION_SECRET=change-me-to-a-long-random-string-at-least-32-chars
+    # Database
+    ROGELEDB_DB_DRIVER=postgres
+    ROGELEDB_DB_HOST=127.0.0.1
+    ROGELEDB_DB_PORT=5432
+    ROGELEDB_DB_USER=postgres
+    ROGELEDB_DB_PASSWORD=
+    ROGELEDB_DB_NAME=rogeledb
+    ROGELEDB_DB_SSLMODE=disable
+    ROGELEDB_DB_MAX_OPEN_CONNS=25
+    ROGELEDB_DB_MAX_IDLE_CONNS=5
+    ROGELEDB_DB_CONN_MAX_LIFETIME=1h
 
-    # Public URL of this app
-    NEXT_PUBLIC_APP_URL=http://localhost:3000
+    # JWT
+    ROGELEDB_JWT_SECRET=
+    ROGELEDB_JWT_ACCESS_TTL=15m
+    ROGELEDB_JWT_REFRESH_TTL=168h
 
-`ROGELEDB_API_URL` is used by server components and the internal proxy route.
-`SESSION_SECRET` signs the auth cookies that hold JWTs. It must be at least 32
-characters and must differ between environments.
+    # MTN Mobile Money
+    ROGELEDB_MTN_MOMO_BASE_URL=
+    ROGELEDB_MTN_MOMO_SUBSCRIPTION_KEY=
+    ROGELEDB_MTN_MOMO_API_USER=
+    ROGELEDB_MTN_MOMO_API_KEY=
+    ROGELEDB_MTN_MOMO_TARGET_ENV=sandbox
+    ROGELEDB_MTN_MOMO_CALLBACK_URL=
+    ROGELEDB_MTN_MOMO_CURRENCY=EUR
 
-## Running Locally
+    # Airtel Money
+    ROGELEDB_AIRTEL_BASE_URL=
+    ROGELEDB_AIRTEL_CLIENT_ID=
+    ROGELEDB_AIRTEL_CLIENT_SECRET=
+    ROGELEDB_AIRTEL_CALLBACK_URL=
 
-Start the development server:
+    # Cloudflare R2
+    ROGELEDB_R2_ACCOUNT_ID=
+    ROGELEDB_R2_ACCESS_KEY_ID=
+    ROGELEDB_R2_SECRET_ACCESS_KEY=
+    ROGELEDB_R2_BUCKET=
+    ROGELEDB_R2_PUBLIC_URL=
+    ROGELEDB_R2_ENDPOINT=
 
-    pnpm dev
+    # Email
+    ROGELEDB_RESEND_API_KEY=
+    ROGELEDB_EMAIL_FROM=
+    ROGELEDB_EMAIL_REPLY_TO=
+    ROGELEDB_WEB_BASE_URL=
 
-The app is available at http://localhost:3000.
+The `.env` file must not be committed to version control. It is listed in
+`.gitignore`.
 
-The ROGELE API must be running and reachable at `ROGELEDB_API_URL` for
-authentication and data to work.
+## Running the API
 
-## Project Structure
+Start the server:
 
-    src/
-      app/
-        (auth)/                Public auth pages
-          login/
-          register/
-          forgot-password/
-          reset-password/
-        (app)/                 Learner and teacher experience
-          dashboard/
-          lessons/
-          homework/
-          quizzes/
-          subscription/
-          profile/
-          notifications/
-        (admin)/               Admin panel
-          admin/
-            page.tsx           Overview
-            users/
-            classes/
-            subjects/
-            plans/
-            subscriptions/
-            payments/
-            notifications/
-            email-campaigns/
-            settings/
-        api/
-          auth/                Login, logout, refresh routes
-          proxy/               Catch-all proxy to the Go API
-        layout.tsx
-        globals.css
-      components/
-        brand/                 Logo, branding provider
-        layout/                Sidebar, header, user menu
-        notifications/         Bell, list
-        ui/                    Buttons, dialogs, inputs, tables, etc.
-      lib/
-        api-client.ts          Typed fetch wrapper
-        auth.ts                Cookie-based session helpers
-        server-api.ts          Server-side API client
-        branding.ts            Fetches branding from the API
-        *.server.ts            Server-only fetchers per resource
-        *.client.ts            Client mutators per resource
-      types/                   TypeScript models matching the API DTOs
+    go run ./cmd/api
+
+The server listens on the port specified by `ROGELEDB_APP_PORT`. Health check:
+
+    curl http://localhost:8080/health
+
+Build a binary:
+
+    go build -o bin/rogele ./cmd/api
+
+Run the binary:
+
+    ./bin/rogele
+
+## Database Migrations
+
+Migrations live in `migrations/` and are applied with the `migrate` CLI.
+
+Define a reusable connection string in your shell, or use the `Makefile`
+targets. The password in the connection URL must be URL-encoded (for example,
+`/` becomes `%2F`).
+
+    migrate -path ./migrations \
+      -database "postgres://user:pass@127.0.0.1:5432/rogeledb?sslmode=disable" up
+
+Common commands:
+
+    # Apply all pending migrations
+    migrate -path ./migrations -database "$URL" up
+
+    # Roll back the most recent migration
+    migrate -path ./migrations -database "$URL" down 1
+
+    # Show the current version
+    migrate -path ./migrations -database "$URL" version
+
+    # Create a new migration pair
+    migrate create -ext sql -dir ./migrations -seq add_some_table
+
+For databases that were provisioned before migrations were introduced, mark the
+current version without running migrations:
+
+    migrate -path ./migrations -database "$URL" force 1
+
+The migration set includes:
+
+- `000001_init` — baseline schema (users, classes, subjects, lessons, homework,
+  quizzes, subscriptions, payments, notifications, email).
+- `000002_email` — the `email_queue` table for async delivery.
+- `000003_email_template_unique` — unique constraint on `email_templates.name`.
+- `000004_expiry_reminder` — `subscriptions.expiry_reminder_sent` flag.
+- `000005_updated_at` — `updated_at` columns on `classes` and `subjects`.
+- `000006_unique_classes_subjects` — uniqueness on class names and subject
+  names per class.
+- `000007_timestamptz_quizzes` — timestamp columns on quizzes and attempts
+  converted to `timestamptz`.
+- `000008_notifications_user` — per-user notifications (`notifications.user_id`).
+- `000009_notification_reads` — per-user read state for broadcast
+  notifications.
+
+## Project Layout
+
+    cmd/api/                Application entry point
+    configs/                YAML configuration and CRUD resource definitions
+    internal/
+      auth/                 JWT signing and password hashing
+      config/               Configuration loader
+      crud/                 Generic YAML-driven CRUD engine
+      db/                   PostgreSQL connection pool
+      dberr/                Mapping of PostgreSQL errors to domain errors
+      domain/               Domain models and sentinel errors
+      dto/                  Request and response shapes
+      handler/              HTTP handlers
+      httputil/             JSON response helpers
+      logger/               Structured logging
+      mailer/               Email delivery, branded shell, queue worker, templates
+      payments/             Provider abstraction with MTN and Airtel adapters
+      repository/           Repository interfaces
+        postgres/           PostgreSQL implementations
+      scheduler/            Background schedulers (expiry reminders)
+      server/               Router and middleware
+      service/              Business logic
+      storage/              Cloudflare R2 client and presigned URLs
+    migrations/             golang-migrate SQL files
+
+## API Reference
+
+All endpoints are prefixed with `/api/v1`. Unless noted otherwise, requests
+must include a valid `Authorization` header:
+
+    Authorization: Bearer <access_token>
+
+### Authentication
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| POST | /auth/register | Register a new user |
+| POST | /auth/login | Authenticate and receive tokens |
+| POST | /auth/refresh | Exchange a refresh token for a new access token |
+| POST | /auth/forgot-password | Request a password reset link |
+| POST | /auth/reset-password | Complete a password reset |
+| GET | /auth/me | Return the authenticated user |
+
+### Lessons
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET | /lessons | List lessons visible to the caller |
+| POST | /lessons | Create a lesson (teacher or admin) |
+| GET | /lessons/bookmarks | List lessons bookmarked by the caller |
+| GET | /lessons/{id} | Retrieve a lesson |
+| PATCH | /lessons/{id} | Update a lesson |
+| DELETE | /lessons/{id} | Delete a lesson |
+| POST | /lessons/{id}/publish | Publish or unpublish a lesson |
+| POST | /lessons/{id}/approve | Approve or unapprove a lesson (admin) |
+| POST | /lessons/{id}/bookmark | Toggle a bookmark |
+| GET | /lessons/{id}/materials | List lesson materials |
+| POST | /lessons/{id}/materials | Register a material |
+| DELETE | /lessons/{id}/materials/{materialId} | Delete a material |
+
+### Homework
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET | /homework | List homework visible to the caller |
+| POST | /homework | Create homework (teacher or admin) |
+| GET | /homework/my-submissions | List the caller's submissions |
+| GET | /homework/{id} | Retrieve homework |
+| PATCH | /homework/{id} | Update homework |
+| DELETE | /homework/{id} | Delete homework |
+| POST | /homework/{id}/submit | Submit homework (learner) |
+| GET | /homework/{id}/submissions | List submissions for homework |
+| POST | /homework/submissions/{submissionId}/grade | Grade a submission |
+| GET | /homework/{id}/attachments | List attachments |
+| POST | /homework/{id}/attachments | Register an attachment |
+| DELETE | /homework/{id}/attachments/{attachmentId} | Delete an attachment |
+| GET | /homework/submissions/{submissionId}/files | List submission files |
+| POST | /homework/submissions/{submissionId}/files | Register a submission file |
+| DELETE | /homework/submissions/{submissionId}/files/{fileId} | Delete a submission file |
+
+### Quizzes
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET | /quizzes | List quizzes visible to the caller |
+| POST | /quizzes | Create a quiz (teacher or admin) |
+| GET | /quizzes/my-attempts | List the caller's quiz attempts |
+| GET | /quizzes/{id} | Retrieve a quiz |
+| PATCH | /quizzes/{id} | Update a quiz |
+| DELETE | /quizzes/{id} | Delete a quiz |
+| POST | /quizzes/{id}/approve | Approve or unapprove a quiz (admin) |
+| GET | /quizzes/{id}/questions | List questions for a quiz |
+| POST | /quizzes/{id}/questions | Add a question |
+| DELETE | /quizzes/{id}/questions/{questionId} | Delete a question |
+| POST | /quizzes/{id}/attempts | Start or resume an attempt |
+| GET | /quizzes/{id}/attempts | List all attempts for a quiz (teacher or admin) |
+| DELETE | /quizzes/{id}/attempts | Delete all attempts for a quiz (teacher or admin) |
+| GET | /quizzes/attempts/{attemptId} | Retrieve an attempt |
+| POST | /quizzes/attempts/{attemptId}/submit | Submit an attempt |
+
+### Subscriptions and Trials
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET | /subscriptions/me | Return the caller's active subscription |
+| GET | /subscriptions | List the caller's subscriptions |
+| GET | /subscriptions/all | List all subscriptions (admin) |
+| POST | /subscriptions/{id}/cancel | Cancel a subscription |
+| GET | /trials/me | Return the caller's trial |
+| POST | /trials | Start a free trial (external users) |
+
+### Payments
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| POST | /payments/initiate | Initiate a payment |
+| GET | /payments/me | List the caller's payments |
+| GET | /payments/history | List the caller's payment history |
+| GET | /payments/all | List all payments (admin) |
+| GET | /payments/{id}/status | Retrieve payment status |
+
+### Notifications
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET | /notifications/me | List notifications visible to the caller |
+| GET | /notifications/me/unread-count | Count unread notifications |
+| POST | /notifications/{id}/read | Mark one notification read |
+| POST | /notifications/read-all | Mark every visible notification read |
+
+Notifications may be addressed to a single user (`user_id` set) or broadcast
+to everyone (`user_id` null). Read state is tracked per user in the
+`notification_reads` table, so marking a broadcast as read for one user never
+affects another user.
+
+Notifications are emitted automatically on the following events:
+
+- New homework assigned to a class.
+- A quiz is published to a class.
+- A lesson is published to a class.
+- A payment succeeds or fails.
+- A subscription is close to expiring.
+- A free trial is close to ending.
+
+### Webhooks
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| POST | /webhooks/mtn | MTN Mobile Money callback |
+| POST | /webhooks/airtel | Airtel Money callback |
+
+### Uploads
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| POST | /uploads/presign | Generate a presigned upload URL |
+
+### Admin
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET | /admin/stats | Platform-wide statistics |
+| GET | /admin/activity | Recent activity feed |
+| GET | /admin/recent-signups | Recent user registrations |
+| GET | /admin/recent-payments | Recent payments |
+| GET | /admin/users/{id}/attempts | Quiz attempts for a user |
+| GET | /admin/users/{id}/submissions | Homework submissions for a user |
+| POST | /admin/users/{id}/force-reset | Send a password reset link to a user |
+| POST | /admin/users/{id}/set-password | Directly set a user's password |
+| POST | /admin/notifications/broadcast | Send a notification to every user |
+| GET | /admin/notifications | List sent broadcasts |
+
+### Email Campaigns (Admin)
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET | /admin/email-campaigns | List campaigns |
+| POST | /admin/email-campaigns | Create a draft campaign |
+| GET | /admin/email-campaigns/{id} | Retrieve a campaign |
+| PATCH | /admin/email-campaigns/{id} | Update a draft campaign |
+| DELETE | /admin/email-campaigns/{id} | Delete a draft campaign |
+| POST | /admin/email-campaigns/{id}/preview | Preview a rendered campaign |
+| POST | /admin/email-campaigns/{id}/send | Queue the campaign for delivery |
+| GET | /admin/email-campaigns/{id}/logs | List per-recipient delivery logs |
+
+### Generic CRUD Resources
+
+The following resources are exposed by the YAML-driven CRUD engine, defined in
+`configs/resources.yaml`:
+
+- `/settings`
+- `/subscription-plans`
+- `/classes`
+- `/subjects`
+- `/email-templates`
+- `/users`
+
+Each resource supports `GET /`, `GET /{id}`, `POST /`, `PATCH /{id}`, and
+`DELETE /{id}`, subject to role restrictions declared in the resource
+definition.
 
 ## Authentication
 
-The web app uses httpOnly cookies for tokens. The browser never sees the JWT
-directly.
+The API issues two JWTs on login and registration:
 
-Flow:
+- Access token with a short lifetime (default 15 minutes).
+- Refresh token with a longer lifetime (default 7 days).
 
-1. The login form posts credentials to `/api/auth/login`, a Next.js route
-   handler that proxies to `POST /api/v1/auth/login` on the Go API.
-2. On success, the Next.js route sets two cookies:
-   - `rogele_access_token` (httpOnly, short-lived)
-   - `rogele_refresh_token` (httpOnly, long-lived)
-   It also sets a non-sensitive `rogele_user` cookie with the user's id, email,
-   name, and role for server-side rendering.
-3. Middleware (`src/middleware.ts`) redirects unauthenticated requests to
-   `/login` and authenticated users away from the auth pages.
-4. Server components use `src/lib/server-api.ts`, which reads the access token
-   cookie and injects it as an `Authorization` header when calling the Go API.
-5. Client components call `/api/proxy/...`, which forwards to the API with the
-   cookie token attached.
+Send the access token on every request in the `Authorization` header:
 
-Refreshing happens automatically when the access token expires — call
-`/api/auth/refresh` from the client, or send a request and let the middleware
-handle the redirect.
+    Authorization: Bearer <access_token>
 
-## Branding and Theming
+When the access token expires, exchange the refresh token:
 
-Branding is loaded from the API at runtime. The server fetches
-`GET /api/v1/config/public` on every page render, which returns:
-
+    POST /api/v1/auth/refresh
     {
-      "branding": {
-        "school_name": "Rays of Grace",
-        "tagline": "E-Learning",
-        "logo_url": "",
-        "favicon_url": "",
-        "color_primary": "#7f2677",
-        "color_accent": "#f06724",
-        "support_email": "",
-        "website_url": ""
-      }
+      "refresh_token": "..."
     }
 
-Two things happen with these values:
+Refresh tokens are accepted only at the refresh endpoint. Passing a refresh
+token to any other endpoint results in a 401 response with the error code
+`WRONG_TOKEN_TYPE`.
 
-1. `BrandingProvider` (`src/components/brand/brand-provider.tsx`) publishes
-   them via React context and sets CSS variables `--brand-primary` and
-   `--brand-accent` on the document root. Every component that uses
-   `text-brand-primary`, `bg-brand-accent`, and similar utilities inherits the
-   values automatically.
-2. Next.js metadata uses the school name and favicon for the page title and
-   browser tab icon.
+## Authorization Model
 
-Admins edit branding at `/admin/settings`. Changes take effect within 60
-seconds (the API caches the branding block).
+The API enforces three layers of authorization:
 
-The theme (light, dark, or system) is stored in `localStorage` under
-`rogele.theme` and applied before first paint by an inline script in the root
-layout. There is no flash of the wrong theme.
+1. Authentication. All endpoints except `/auth/register`, `/auth/login`,
+   `/auth/refresh`, `/auth/forgot-password`, `/auth/reset-password`, and the
+   payment webhooks require a valid access token.
+
+2. Role-based access. Each endpoint declares which roles may invoke it.
+   Attempts from other roles return 403.
+
+3. Resource ownership. Teachers may only modify lessons, homework, and quizzes
+   they created. Admins may modify any resource. Learners may only read
+   resources matching their class.
+
+## File Uploads
+
+Files are uploaded directly from the client to Cloudflare R2 using presigned
+URLs. The API never receives file bytes.
+
+Upload flow:
+
+1. `POST /api/v1/uploads/presign` with a JSON body containing `file_name`,
+   `content_type`, and `size`.
+2. The response contains `upload_url`, `file_key`, and `public_url`. The
+   presigned URL is valid for 15 minutes.
+3. Upload the file with an HTTP `PUT` to `upload_url`, using the same
+   `Content-Type` that was included in the presign request.
+4. Register the file with the relevant resource endpoint, passing `public_url`
+   as the file path.
+
+Limits:
+
+- Maximum file size: 5 MB.
+- Allowed content types: PDF, common Office formats, plain text, CSV, JPEG,
+  PNG, WebP, GIF, MP4, QuickTime, WebM, MP3, M4A.
+
+## Payments
+
+Payments are initiated with a plan ID, a payment method, and a phone number:
+
+    POST /api/v1/payments/initiate
+    {
+      "plan_id": 1,
+      "method": "mtn",
+      "phone_number": "250788000000"
+    }
+
+The API calls the provider, records a payment with status `pending`, and
+returns a provider reference. The provider confirms the outcome asynchronously
+via the webhook endpoints.
+
+When a payment is confirmed as successful, the API activates or extends the
+user's subscription, writes an entry to `payment_history`, sends a payment
+confirmation email, and emits a notification. Failed payments are recorded with
+status `failed` and also emit a notification.
+
+Airtel support is planned and the provider interface is in place; credentials
+are required to enable it.
 
 ## Notifications
 
-Every authenticated user has a notification bell in the header. The bell:
+Every notification belongs to either one user (`user_id` set) or every user
+(`user_id` null, a broadcast).
 
-- Shows an unread count fetched from
-  `GET /api/v1/notifications/me/unread-count`.
-- Polls every 30 seconds to refresh the count.
-- Opens a dropdown with the latest 10 notifications.
-- Navigates to the notification's link, marking it read, when clicked.
-- Offers "Mark all read" inside the dropdown.
+Read state is stored in `notification_reads` — a table keyed by
+`(notification_id, user_id)`. A broadcast notification therefore has one shared
+row and one read-state row per user who has seen it.
 
-The full list lives at `/notifications` with filters by type and unread-only.
+The frontend polls `/notifications/me/unread-count` every 30 seconds to keep
+the badge current. Clicking a notification in the UI marks it read and, if it
+has a link, navigates to that destination.
 
-The admin bell's "View all" link goes to `/admin/notifications`, which provides
-a composer for broadcasts and a history of everything sent.
+## Email
 
-## API Communication
+Email is delivered asynchronously. Outgoing messages are written to the
+`email_queue` table and processed by a background worker that runs inside the
+API process. Every delivery attempt is recorded in `email_logs`.
 
-All API calls go through one of two paths:
+The following transactional emails are supported:
 
-- **Server components** use `serverApiRequest` from `src/lib/server-api.ts`.
-  This reads the access token cookie and injects the `Authorization` header.
-- **Client components** use one of the `*.client.ts` helpers, which call
-  `/api/proxy/...`. The proxy route at
-  `src/app/api/proxy/[...path]/route.ts` reads the same cookie, forwards the
-  request to the Go API, and returns the response body.
+- Password reset
+- Payment confirmation
+- Subscription expiring soon
+- Trial ending soon
 
-The proxy exports handlers for `GET`, `POST`, `PUT`, `PATCH`, `DELETE`,
-`HEAD`, and `OPTIONS`. If a new HTTP method is needed, add it to the exports.
+Administrators may create campaigns through the email campaign endpoints.
+Campaigns resolve recipients by role, by explicit user IDs, or by a list of
+custom email addresses. Each recipient receives a rendered message; delivery
+status is recorded per recipient. A background reconciler marks campaigns as
+`completed` or `failed` once all queued jobs have been processed.
 
-Non-JSON responses are handled defensively. If the API returns plain text (for
-example, a 404 body), the client wraps it as an error message instead of
-throwing a JSON parse exception.
+Templates are stored in `email_templates` and may be edited at runtime. Four
+templates are seeded on startup.
 
-## Roles and Routes
+Every email is wrapped in a branded shell. The shell reads the school name,
+logo, primary color, accent color, and website URL from the `settings` table.
+Changes to branding take effect on subsequent emails within 60 seconds.
 
-Route access is enforced by two layers of layout guards.
+## Error Format
 
-The `(app)` group requires a session, and redirects admins to `/admin`. It
-wraps:
+Errors are returned with a consistent JSON envelope:
 
-- `/dashboard`
-- `/lessons`
-- `/homework`
-- `/quizzes`
-- `/subscription`
-- `/profile`
-- `/notifications`
+    {
+      "error": {
+        "code": "INVALID_INPUT",
+        "message": "invalid input: password must be at least 8 characters"
+      }
+    }
 
-The `(admin)` group requires `role === 'admin'`, and redirects non-admins to
-`/dashboard`. It wraps every page under `/admin`.
+Common error codes:
 
-`/login`, `/register`, `/forgot-password`, and `/reset-password` are public.
-Middleware redirects signed-in users away from them.
+| Code | HTTP Status | Meaning |
+| ---- | ----------- | ------- |
+| INVALID_INPUT | 400 | Validation failed |
+| UNAUTHORIZED | 401 | Missing or invalid credentials |
+| INVALID_TOKEN | 401 | Token is malformed or expired |
+| WRONG_TOKEN_TYPE | 401 | Refresh token used where access token expected |
+| FORBIDDEN | 403 | Authenticated but not permitted |
+| NOT_FOUND | 404 | Resource does not exist |
+| CONFLICT | 409 | Uniqueness violation or state conflict |
+| INTERNAL_ERROR | 500 | Unhandled server error |
+
+## Pagination and Filtering
+
+List endpoints accept the following query parameters:
+
+- `page` (default 1)
+- `per_page` (default 20, maximum 100)
+- `q` for free-text search where supported
+- resource-specific filters documented in the endpoint description
+- `sort` for comma-separated sort keys, prefixed with `-` for descending order
+
+Responses use a common envelope:
+
+    {
+      "data": [ ... ],
+      "meta": {
+        "page": 1,
+        "per_page": 20,
+        "total": 143,
+        "last_page": 8
+      }
+    }
 
 ## Development Workflow
 
 Common commands:
 
-    # Start the dev server
-    pnpm dev
+    # Run the API
+    make run
 
-    # Type-check the whole project
-    pnpm type-check
+    # Build a binary
+    make build
 
-    # Lint
-    pnpm lint
+    # Tidy dependencies
+    make tidy
 
-    # Format with Prettier
-    pnpm format
+    # Format the codebase
+    make fmt
 
-    # Build for production
-    pnpm build
+    # Run static analysis
+    make vet
 
-    # Run the production build
-    pnpm start
+    # Run tests
+    make test
 
-Before committing, make sure:
+    # Apply migrations
+    make migrate-up
 
-    pnpm type-check
-    pnpm build
+    # Roll back one migration
+    make migrate-down
 
-Both should pass with no errors.
+    # Create a new migration
+    make migrate-create name=add_some_table
 
-## Building for Production
+Before committing, run:
 
-    pnpm build
+    go build ./...
+    go vet ./...
+    gofmt -w .
 
-The build produces a `.next` directory with the compiled app. Serve it with:
+The API uses `log/slog` for structured logging. In development, logs are
+emitted as text. In production, logs are emitted as JSON. Every request is
+tagged with a request ID that is returned in the `X-Request-ID` response
+header.
 
-    pnpm start
+## Testing
 
-Or place the output behind a reverse proxy (nginx, Caddy, Cloudflare) that
-terminates TLS and forwards to `localhost:3000`.
+Run the test suite:
 
-Environment variables needed at runtime:
+    go test ./... -race -cover
 
-- `ROGELEDB_API_URL` — the URL of the Go API
-- `SESSION_SECRET` — must match between builds if cookies are expected to keep
-  working across deploys
-- `NEXT_PUBLIC_APP_URL` — the public URL of this app
+Tests are colocated with the code they exercise and named `*_test.go`.
 
 ## Deployment
 
-The app is designed to run as a Node.js process. Recommended deployments:
+The service is distributed as a single static binary. Build it with:
 
-- **Vercel** — zero-config for Next.js. Set the environment variables in the
-  project settings. Note that `ROGELEDB_API_URL` must be reachable from Vercel's
-  servers, so the API cannot be on a private network.
-- **Docker + a VPS** — build a Docker image that runs `pnpm start` and expose
-  port 3000. Put Cloudflare or Caddy in front for TLS.
-- **Railway, Render, Fly.io** — all support Node.js processes and environment
-  variables.
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/rogele ./cmd/api
 
-Cookies are set with `secure: true` when `NODE_ENV=production`, so the app must
-be served over HTTPS in production.
+Run migrations before starting the new binary:
+
+    migrate -path ./migrations -database "$DATABASE_URL" up
+
+The binary reads configuration from environment variables and exits on startup
+if any required value is missing. A `/health` endpoint is available for
+liveness and readiness checks.
+
+Graceful shutdown is implemented. The server drains in-flight requests and
+stops background workers when it receives `SIGINT` or `SIGTERM`.
 
 ## License
 
