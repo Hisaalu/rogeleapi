@@ -86,7 +86,8 @@ func run() error {
 		log.Warn("mailer using noop sender")
 	}
 
-	mailerSvc := mailer.NewService(sender, emailRepo, log, cfg.App.Name, cfg.Email.WebBaseURL)
+	brandingProvider := mailer.NewBrandingProvider(database)
+	mailerSvc := mailer.NewService(sender, emailRepo, brandingProvider, log, cfg.App.Name, cfg.Email.WebBaseURL)
 	notificationSvc := service.NewNotificationService(repos.Notification, log)
 
 	if err := seedEmailTemplates(ctx, emailRepo, log); err != nil {

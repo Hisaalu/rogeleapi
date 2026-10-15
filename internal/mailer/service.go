@@ -12,6 +12,7 @@ import (
 type Service struct {
 	sender    Sender
 	repo      *postgres.EmailRepo
+	branding  *BrandingProvider
 	log       *slog.Logger
 	fromName  string
 	webURL    string
@@ -19,10 +20,17 @@ type Service struct {
 	batchSize int
 }
 
-func NewService(sender Sender, repo *postgres.EmailRepo, log *slog.Logger, fromName, webURL string) *Service {
+func NewService(
+	sender Sender,
+	repo *postgres.EmailRepo,
+	branding *BrandingProvider,
+	log *slog.Logger,
+	fromName, webURL string,
+) *Service {
 	return &Service{
 		sender:    sender,
 		repo:      repo,
+		branding:  branding,
 		log:       log,
 		fromName:  fromName,
 		webURL:    webURL,
@@ -131,10 +139,19 @@ func (s *Service) deliver(ctx context.Context, job *domain.EmailJob) {
 		return
 	}
 
+	var branding Branding
+	if s.branding != nil {
+		branding = s.branding.Get(ctx)
+	} else {
+		branding = defaultBranding
+	}
+
+	wrapped := WrapHTML(html, branding)
+
 	msg := Message{
 		To:      job.ToEmail,
 		Subject: job.Subject,
-		HTML:    WrapHTML(html),
+		HTML:    wrapped,
 		Text:    stripTags(html),
 	}
 	if job.ToName != nil {
@@ -147,7 +164,6 @@ func (s *Service) deliver(ctx context.Context, job *domain.EmailJob) {
 			"to", job.ToEmail,
 			"template", job.TemplateName,
 			"attempts", job.Attempts+1)
-
 		s.persistFailureIfFinal(ctx, job, err.Error())
 		_ = s.repo.MarkJobFailed(ctx, job.ID, err.Error())
 		return
@@ -175,6 +191,36 @@ func (s *Service) deliver(ctx context.Context, job *domain.EmailJob) {
 		"campaign_id", job.CampaignID)
 }
 
+func (s *Service) renderBody(ctx context.Context, job *domain.EmailJob) (string, error) {
+	if raw, ok := job.Variables["_raw_html"].(string); ok && raw != "" {
+		return raw, nil
+	}
+	tmpl, err := s.repo.GetTemplateByName(ctx, job.TemplateName)
+	if err != nil {
+		return "", err
+	}
+
+	var branding Branding
+	if s.branding != nil {
+		branding = s.branding.Get(ctx)
+	} else {
+		branding = defaultBranding
+	}
+
+	merged := make(map[string]any, len(job.Variables)+6)
+	for k, v := range job.Variables {
+		merged[k] = v
+	}
+	merged["_brand_primary"] = branding.ColorPrimary
+	merged["_brand_accent"] = branding.ColorAccent
+	merged["_school_name"] = branding.SchoolName
+	merged["_website_url"] = branding.WebsiteURL
+	merged["_logo_url"] = branding.LogoURL
+	merged["_support_email"] = branding.SupportEmail
+
+	return RenderText(tmpl.Body, merged)
+}
+
 func (s *Service) persistFailureIfFinal(ctx context.Context, job *domain.EmailJob, reason string) {
 	if job.Attempts+1 < job.MaxAttempts {
 		return
@@ -190,24 +236,6 @@ func (s *Service) persistFailureIfFinal(ctx context.Context, job *domain.EmailJo
 	if _, err := s.repo.CreateLog(ctx, logEntry); err != nil {
 		s.log.Error("mailer: create failure log", "error", err, "job", job.ID)
 	}
-}
-
-func (s *Service) renderBody(ctx context.Context, job *domain.EmailJob) (string, error) {
-	if raw, ok := job.Variables["_raw_html"].(string); ok && raw != "" {
-		return raw, nil
-	}
-	tmpl, err := s.repo.GetTemplateByName(ctx, job.TemplateName)
-	if err != nil {
-		return "", err
-	}
-	return RenderText(tmpl.Body, job.Variables)
-}
-
-func (s *Service) recordFailure(ctx context.Context, job *domain.EmailJob, logEntry *domain.EmailLog, reason string) {
-	logEntry.Status = "failed"
-	logEntry.ErrorMessage = &reason
-	_ = s.repo.UpdateLog(ctx, logEntry)
-	_ = s.repo.MarkJobFailed(ctx, job.ID, reason)
 }
 
 func (s *Service) reconcileCampaigns(ctx context.Context) {

@@ -1,574 +1,332 @@
-# ROGELE API
+# ROGELE WEB
 
-ROGELE is a learning management platform for schools. This repository contains
-the backend HTTP API that serves the web application, the Android application,
-and internal analytics services.
+The web client for ROGELE, a learning management platform for schools.
 
-The API is written in Go and uses PostgreSQL as its primary datastore. It exposes
-a REST interface for authentication, academic content (lessons, homework,
-quizzes), subscriptions, payments, notifications, and administrative tooling.
+This application is the browser interface for three audiences:
+
+- Administrators, who manage users, classes, subjects, subscription plans, and
+  platform settings.
+- Teachers, who create lessons, assign homework, build quizzes, and grade
+  submissions.
+- Learners and external users, who browse lessons, submit homework, take
+  quizzes, and manage their subscriptions.
+
+The web client communicates exclusively with the ROGELE API. It never connects
+directly to a database or any other backend service.
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Configuration](#configuration)
-- [Running the API](#running-the-api)
-- [Database Migrations](#database-migrations)
-- [Project Layout](#project-layout)
-- [API Reference](#api-reference)
+- [Running Locally](#running-locally)
+- [Project Structure](#project-structure)
 - [Authentication](#authentication)
-- [Authorization Model](#authorization-model)
-- [File Uploads](#file-uploads)
-- [Payments](#payments)
-- [Email](#email)
-- [Error Format](#error-format)
-- [Pagination and Filtering](#pagination-and-filtering)
+- [Branding and Theming](#branding-and-theming)
+- [Notifications](#notifications)
+- [API Communication](#api-communication)
+- [Roles and Routes](#roles-and-routes)
 - [Development Workflow](#development-workflow)
-- [Testing](#testing)
+- [Building for Production](#building-for-production)
 - [Deployment](#deployment)
 - [License](#license)
 
 ## Overview
 
-The ROGELE API is a single Go binary that provides:
+The ROGELE Web app is a Next.js application built with the App Router. It
+provides three distinct experiences behind a single authentication system:
 
-- JWT-based authentication with access and refresh tokens.
-- Role-based access control for four user roles: admin, teacher, learner, and
-  external user.
-- Lesson management with class scoping, publishing, approval, bookmarks, and
-  attached materials.
-- Homework assignment, submission, and grading.
-- Quizzes with question banks, timed attempts, automatic scoring, and resumable
-  sessions.
-- Subscription plans, free trials, subscriptions, and payment processing through
-  MTN Mobile Money and Airtel Money.
-- Email delivery for password resets, payment confirmations, subscription
-  reminders, trial reminders, and administrator-driven campaigns.
-- File uploads to Cloudflare R2 through presigned URLs.
-- A generic, YAML-driven CRUD engine for low-complexity resources.
+- `/` and `/dashboard` — the learner and teacher experience
+- `/admin` and sub-pages — the administration panel
+- `/login` and related pages — public authentication flows
 
-## Architecture
+The layout is responsive, supports light and dark themes, and pulls its
+branding — school name, tagline, logo, and colors — from the API at runtime.
 
-The service is organized into four layers:
+## Tech Stack
 
-1. Handlers receive HTTP requests, decode input, and delegate to services.
-2. Services implement business rules and orchestrate repositories.
-3. Repositories isolate SQL and persistence concerns behind interfaces.
-4. Storage adapters (R2, MTN, Airtel, Resend) talk to external systems.
-
-Long-running work (email delivery, expiry reminders) is handled by background
-workers that run inside the same process. Work is queued in PostgreSQL so that
-the HTTP layer never blocks on network I/O to external providers.
-
-The application is designed so that all clients — web, mobile, analytics —
-communicate exclusively with the API. No client connects directly to the
-database.
+- Next.js 14 (App Router)
+- React 18
+- TypeScript (strict mode)
+- Tailwind CSS
+- Lucide icons
+- React Hook Form with Zod validation
+- TanStack Query for server state
+- shadcn-style UI primitives built on Radix
 
 ## Requirements
 
-- Go 1.22 or later
-- PostgreSQL 14 or later
-- golang-migrate CLI
-- Docker (optional, for local PostgreSQL)
+- Node.js 18.17 or later
+- pnpm 9 or later (npm and yarn work too)
 
 ## Installation
 
 Clone the repository:
 
-    git clone https://github.com/Hisaalu/rogeleapi.git
-    cd rogeleapi
+    git clone https://github.com/Hisaalu/rogele-web.git
+    cd rogele-web
 
 Install dependencies:
 
-    go mod tidy
-
-Install the golang-migrate CLI:
-
-    go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+    pnpm install
 
 ## Configuration
 
-Configuration is provided through a `.env` file at the project root. The
-application loads `.env` on startup and overrides values from
-`configs/config.yaml`. Environment variables take precedence over YAML.
+Configuration lives in `.env.local` at the project root. It is not committed.
 
-Create a `.env` file with the following keys:
+    # Go API base URL (server-side, no trailing slash)
+    ROGELEDB_API_URL=http://localhost:8080
 
-    # Application
-    ROGELEDB_APP_NAME=rogele
-    ROGELEDB_APP_ENV=development
-    ROGELEDB_APP_PORT=8080
+    # Same URL, exposed to the browser for reference
+    NEXT_PUBLIC_API_URL=http://localhost:8080
 
-    # Database
-    ROGELEDB_DB_DRIVER=postgres
-    ROGELEDB_DB_HOST=127.0.0.1
-    ROGELEDB_DB_PORT=5432
-    ROGELEDB_DB_USER=postgres
-    ROGELEDB_DB_PASSWORD=
-    ROGELEDB_DB_NAME=rogeledb
-    ROGELEDB_DB_SSLMODE=disable
-    ROGELEDB_DB_MAX_OPEN_CONNS=25
-    ROGELEDB_DB_MAX_IDLE_CONNS=5
-    ROGELEDB_DB_CONN_MAX_LIFETIME=1h
+    # Session secret used to sign auth cookies
+    SESSION_SECRET=change-me-to-a-long-random-string-at-least-32-chars
 
-    # JWT
-    ROGELEDB_JWT_SECRET=
-    ROGELEDB_JWT_ACCESS_TTL=15m
-    ROGELEDB_JWT_REFRESH_TTL=168h
+    # Public URL of this app
+    NEXT_PUBLIC_APP_URL=http://localhost:3000
 
-    # MTN Mobile Money
-    ROGELEDB_MTN_MOMO_BASE_URL=
-    ROGELEDB_MTN_MOMO_SUBSCRIPTION_KEY=
-    ROGELEDB_MTN_MOMO_API_USER=
-    ROGELEDB_MTN_MOMO_API_KEY=
-    ROGELEDB_MTN_MOMO_TARGET_ENV=sandbox
-    ROGELEDB_MTN_MOMO_CALLBACK_URL=
-    ROGELEDB_MTN_MOMO_CURRENCY=EUR
+`ROGELEDB_API_URL` is used by server components and the internal proxy route.
+`SESSION_SECRET` signs the auth cookies that hold JWTs. It must be at least 32
+characters and must differ between environments.
 
-    # Airtel Money
-    ROGELEDB_AIRTEL_BASE_URL=
-    ROGELEDB_AIRTEL_CLIENT_ID=
-    ROGELEDB_AIRTEL_CLIENT_SECRET=
-    ROGELEDB_AIRTEL_CALLBACK_URL=
+## Running Locally
 
-    # Cloudflare R2
-    ROGELEDB_R2_ACCOUNT_ID=
-    ROGELEDB_R2_ACCESS_KEY_ID=
-    ROGELEDB_R2_SECRET_ACCESS_KEY=
-    ROGELEDB_R2_BUCKET=
-    ROGELEDB_R2_PUBLIC_URL=
-    ROGELEDB_R2_ENDPOINT=
+Start the development server:
 
-    # Email
-    ROGELEDB_RESEND_API_KEY=
-    ROGELEDB_EMAIL_FROM=
-    ROGELEDB_EMAIL_REPLY_TO=
-    ROGELEDB_WEB_BASE_URL=
+    pnpm dev
 
-The `.env` file must not be committed to version control. It is listed in
-`.gitignore`.
+The app is available at http://localhost:3000.
 
-## Running the API
+The ROGELE API must be running and reachable at `ROGELEDB_API_URL` for
+authentication and data to work.
 
-Start the server:
+## Project Structure
 
-    go run ./cmd/api
-
-The server listens on the port specified by `ROGELEDB_APP_PORT`. Health check:
-
-    curl http://localhost:8080/health
-
-Build a binary:
-
-    go build -o bin/rogele ./cmd/api
-
-Run the binary:
-
-    ./bin/rogele
-
-## Database Migrations
-
-Migrations live in `migrations/` and are applied with the `migrate` CLI.
-
-Define a reusable connection string in your shell, or use the `Makefile`
-targets. The password in the connection URL must be URL-encoded (for example,
-`/` becomes `%2F`).
-
-    migrate -path ./migrations \
-      -database "postgres://user:pass@127.0.0.1:5432/rogeledb?sslmode=disable" up
-
-Common commands:
-
-    # Apply all pending migrations
-    migrate -path ./migrations -database "$URL" up
-
-    # Roll back the most recent migration
-    migrate -path ./migrations -database "$URL" down 1
-
-    # Show the current version
-    migrate -path ./migrations -database "$URL" version
-
-    # Create a new migration pair
-    migrate create -ext sql -dir ./migrations -seq add_some_table
-
-For databases that were provisioned before migrations were introduced, mark the
-current version without running migrations:
-
-    migrate -path ./migrations -database "$URL" force 1
-
-## Project Layout
-
-    cmd/api/                Application entry point
-    configs/                YAML configuration and CRUD resource definitions
-    internal/
-      auth/                 JWT signing and password hashing
-      config/               Configuration loader
-      crud/                 Generic YAML-driven CRUD engine
-      db/                   PostgreSQL connection pool
-      dberr/                Mapping of PostgreSQL errors to domain errors
-      domain/               Domain models and sentinel errors
-      dto/                  Request and response shapes
-      handler/              HTTP handlers
-      httputil/             JSON response helpers
-      logger/               Structured logging
-      mailer/               Email delivery, queue worker, and templates
-      payments/             Provider abstraction with MTN and Airtel adapters
-      repository/           Repository interfaces
-        postgres/           PostgreSQL implementations
-      scheduler/            Background schedulers (expiry reminders)
-      server/               Router and middleware
-      service/              Business logic
-      storage/              Cloudflare R2 client and presigned URLs
-    migrations/             golang-migrate SQL files
-
-## API Reference
-
-All endpoints are prefixed with `/api/v1`. Unless noted otherwise, requests
-must include a valid `Authorization` header:
-
-    Authorization: Bearer <access_token>
-
-### Authentication
-
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| POST | /auth/register | Register a new user |
-| POST | /auth/login | Authenticate and receive tokens |
-| POST | /auth/refresh | Exchange a refresh token for a new access token |
-| POST | /auth/forgot-password | Request a password reset link |
-| POST | /auth/reset-password | Complete a password reset |
-| GET | /auth/me | Return the authenticated user |
-
-### Lessons
-
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| GET | /lessons | List lessons visible to the caller |
-| POST | /lessons | Create a lesson (teacher or admin) |
-| GET | /lessons/bookmarks | List lessons bookmarked by the caller |
-| GET | /lessons/{id} | Retrieve a lesson |
-| PATCH | /lessons/{id} | Update a lesson |
-| DELETE | /lessons/{id} | Delete a lesson |
-| POST | /lessons/{id}/publish | Publish or unpublish a lesson |
-| POST | /lessons/{id}/approve | Approve or unapprove a lesson (admin) |
-| POST | /lessons/{id}/bookmark | Toggle a bookmark |
-| GET | /lessons/{id}/materials | List lesson materials |
-| POST | /lessons/{id}/materials | Register a material |
-| DELETE | /lessons/{id}/materials/{materialId} | Delete a material |
-
-### Homework
-
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| GET | /homework | List homework visible to the caller |
-| POST | /homework | Create homework (teacher or admin) |
-| GET | /homework/my-submissions | List the caller's submissions |
-| GET | /homework/{id} | Retrieve homework |
-| PATCH | /homework/{id} | Update homework |
-| DELETE | /homework/{id} | Delete homework |
-| POST | /homework/{id}/submit | Submit homework (learner) |
-| GET | /homework/{id}/submissions | List submissions for homework |
-| POST | /homework/submissions/{submissionId}/grade | Grade a submission |
-
-### Quizzes
-
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| GET | /quizzes | List quizzes visible to the caller |
-| POST | /quizzes | Create a quiz (teacher or admin) |
-| GET | /quizzes/my-attempts | List the caller's quiz attempts |
-| GET | /quizzes/{id} | Retrieve a quiz |
-| PATCH | /quizzes/{id} | Update a quiz |
-| DELETE | /quizzes/{id} | Delete a quiz |
-| POST | /quizzes/{id}/approve | Approve or unapprove a quiz (admin) |
-| GET | /quizzes/{id}/questions | List questions for a quiz |
-| POST | /quizzes/{id}/questions | Add a question |
-| DELETE | /quizzes/{id}/questions/{questionId} | Delete a question |
-| POST | /quizzes/{id}/attempts | Start or resume an attempt |
-| GET | /quizzes/attempts/{attemptId} | Retrieve an attempt |
-| POST | /quizzes/attempts/{attemptId}/submit | Submit an attempt |
-
-### Subscriptions and Trials
-
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| GET | /subscriptions/me | Return the caller's active subscription |
-| GET | /subscriptions | List the caller's subscriptions |
-| GET | /subscriptions/all | List all subscriptions (admin) |
-| POST | /subscriptions/{id}/cancel | Cancel a subscription |
-| GET | /trials/me | Return the caller's trial |
-| POST | /trials | Start a free trial (external users) |
-
-### Payments
-
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| POST | /payments/initiate | Initiate a payment |
-| GET | /payments/me | List the caller's payments |
-| GET | /payments/history | List the caller's payment history |
-| GET | /payments/all | List all payments (admin) |
-| GET | /payments/{id}/status | Retrieve payment status |
-
-### Webhooks
-
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| POST | /webhooks/mtn | MTN Mobile Money callback |
-| POST | /webhooks/airtel | Airtel Money callback |
-
-### Uploads
-
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| POST | /uploads/presign | Generate a presigned upload URL |
-
-### Email Campaigns (Admin)
-
-| Method | Path | Description |
-| ------ | ---- | ----------- |
-| GET | /admin/email-campaigns | List campaigns |
-| POST | /admin/email-campaigns | Create a draft campaign |
-| GET | /admin/email-campaigns/{id} | Retrieve a campaign |
-| PATCH | /admin/email-campaigns/{id} | Update a draft campaign |
-| DELETE | /admin/email-campaigns/{id} | Delete a draft campaign |
-| POST | /admin/email-campaigns/{id}/preview | Preview a rendered campaign |
-| POST | /admin/email-campaigns/{id}/send | Queue the campaign for delivery |
-| GET | /admin/email-campaigns/{id}/logs | List per-recipient delivery logs |
-
-### Generic CRUD Resources
-
-The following resources are exposed by the YAML-driven CRUD engine, defined in
-`configs/resources.yaml`:
-
-- `/settings`
-- `/subscription-plans`
-- `/classes`
-- `/subjects`
-- `/email-templates`
-- `/notifications`
-
-Each resource supports `GET /`, `GET /{id}`, `POST /`, `PATCH /{id}`, and
-`DELETE /{id}`, subject to role restrictions declared in the resource
-definition.
+    src/
+      app/
+        (auth)/                Public auth pages
+          login/
+          register/
+          forgot-password/
+          reset-password/
+        (app)/                 Learner and teacher experience
+          dashboard/
+          lessons/
+          homework/
+          quizzes/
+          subscription/
+          profile/
+          notifications/
+        (admin)/               Admin panel
+          admin/
+            page.tsx           Overview
+            users/
+            classes/
+            subjects/
+            plans/
+            subscriptions/
+            payments/
+            notifications/
+            email-campaigns/
+            settings/
+        api/
+          auth/                Login, logout, refresh routes
+          proxy/               Catch-all proxy to the Go API
+        layout.tsx
+        globals.css
+      components/
+        brand/                 Logo, branding provider
+        layout/                Sidebar, header, user menu
+        notifications/         Bell, list
+        ui/                    Buttons, dialogs, inputs, tables, etc.
+      lib/
+        api-client.ts          Typed fetch wrapper
+        auth.ts                Cookie-based session helpers
+        server-api.ts          Server-side API client
+        branding.ts            Fetches branding from the API
+        *.server.ts            Server-only fetchers per resource
+        *.client.ts            Client mutators per resource
+      types/                   TypeScript models matching the API DTOs
 
 ## Authentication
 
-The API issues two JWTs on login and registration:
+The web app uses httpOnly cookies for tokens. The browser never sees the JWT
+directly.
 
-- Access token with a short lifetime (default 15 minutes).
-- Refresh token with a longer lifetime (default 7 days).
+Flow:
 
-Send the access token on every request in the `Authorization` header:
+1. The login form posts credentials to `/api/auth/login`, a Next.js route
+   handler that proxies to `POST /api/v1/auth/login` on the Go API.
+2. On success, the Next.js route sets two cookies:
+   - `rogele_access_token` (httpOnly, short-lived)
+   - `rogele_refresh_token` (httpOnly, long-lived)
+   It also sets a non-sensitive `rogele_user` cookie with the user's id, email,
+   name, and role for server-side rendering.
+3. Middleware (`src/middleware.ts`) redirects unauthenticated requests to
+   `/login` and authenticated users away from the auth pages.
+4. Server components use `src/lib/server-api.ts`, which reads the access token
+   cookie and injects it as an `Authorization` header when calling the Go API.
+5. Client components call `/api/proxy/...`, which forwards to the API with the
+   cookie token attached.
 
-    Authorization: Bearer <access_token>
+Refreshing happens automatically when the access token expires — call
+`/api/auth/refresh` from the client, or send a request and let the middleware
+handle the redirect.
 
-When the access token expires, exchange the refresh token:
+## Branding and Theming
 
-    POST /api/v1/auth/refresh
-    {
-      "refresh_token": "..."
-    }
-
-Refresh tokens are accepted only at the refresh endpoint. Passing a refresh
-token to any other endpoint results in a 401 response with the error code
-`WRONG_TOKEN_TYPE`.
-
-## Authorization Model
-
-The API enforces three layers of authorization:
-
-1. Authentication. All endpoints except `/auth/register`, `/auth/login`,
-   `/auth/refresh`, `/auth/forgot-password`, `/auth/reset-password`, and the
-   payment webhooks require a valid access token.
-
-2. Role-based access. Each endpoint declares which roles may invoke it.
-   Attempts from other roles return 403.
-
-3. Resource ownership. Teachers may only modify lessons, homework, and quizzes
-   they created. Admins may modify any resource. Learners may only read
-   resources matching their class.
-
-## File Uploads
-
-Files are uploaded directly from the client to Cloudflare R2 using presigned
-URLs. The API never receives file bytes.
-
-Upload flow:
-
-1. `POST /api/v1/uploads/presign` with a JSON body containing `file_name`,
-   `content_type`, and `size`.
-2. The response contains `upload_url`, `file_key`, and `public_url`. The
-   presigned URL is valid for 15 minutes.
-3. Upload the file with an HTTP `PUT` to `upload_url`, using the same
-   `Content-Type` that was included in the presign request.
-4. Register the file with the relevant resource endpoint, passing `public_url`
-   as the file path.
-
-Limits:
-
-- Maximum file size: 5 MB.
-- Allowed content types: PDF, common Office formats, plain text, CSV, JPEG,
-  PNG, WebP, GIF, MP4, QuickTime, WebM, MP3, M4A.
-
-## Payments
-
-Payments are initiated with a plan ID, a payment method, and a phone number:
-
-    POST /api/v1/payments/initiate
-    {
-      "plan_id": 1,
-      "method": "mtn",
-      "phone_number": "250788000000"
-    }
-
-The API calls the provider, records a payment with status `pending`, and
-returns a provider reference. The provider confirms the outcome asynchronously
-via the webhook endpoints.
-
-When a payment is confirmed as successful, the API activates or extends the
-user's subscription, writes an entry to `payment_history`, and sends a payment
-confirmation email. Failed payments are recorded with status `failed`.
-
-Airtel support is planned and the provider interface is in place; credentials
-are required to enable it.
-
-## Email
-
-Email is delivered asynchronously. Outgoing messages are written to the
-`email_queue` table and processed by a background worker that runs inside the
-API process. Every delivery attempt is recorded in `email_logs`.
-
-The following transactional emails are supported:
-
-- Password reset
-- Payment confirmation
-- Subscription expiring soon
-- Trial ending soon
-
-Administrators may create campaigns through the email campaign endpoints.
-Campaigns resolve recipients by role, by explicit user IDs, or by a list of
-custom email addresses. Each recipient receives a rendered message; delivery
-status is recorded per recipient. A background reconciler marks campaigns as
-`completed` or `failed` once all queued jobs have been processed.
-
-Templates are stored in `email_templates` and may be edited at runtime. Four
-templates are seeded on startup.
-
-## Error Format
-
-Errors are returned with a consistent JSON envelope:
+Branding is loaded from the API at runtime. The server fetches
+`GET /api/v1/config/public` on every page render, which returns:
 
     {
-      "error": {
-        "code": "INVALID_INPUT",
-        "message": "invalid input: password must be at least 8 characters"
+      "branding": {
+        "school_name": "Rays of Grace",
+        "tagline": "E-Learning",
+        "logo_url": "",
+        "favicon_url": "",
+        "color_primary": "#7f2677",
+        "color_accent": "#f06724",
+        "support_email": "",
+        "website_url": ""
       }
     }
 
-Common error codes:
+Two things happen with these values:
 
-| Code | HTTP Status | Meaning |
-| ---- | ----------- | ------- |
-| INVALID_INPUT | 400 | Validation failed |
-| UNAUTHORIZED | 401 | Missing or invalid credentials |
-| INVALID_TOKEN | 401 | Token is malformed or expired |
-| WRONG_TOKEN_TYPE | 401 | Refresh token used where access token expected |
-| FORBIDDEN | 403 | Authenticated but not permitted |
-| NOT_FOUND | 404 | Resource does not exist |
-| CONFLICT | 409 | Uniqueness violation or state conflict |
-| INTERNAL_ERROR | 500 | Unhandled server error |
+1. `BrandingProvider` (`src/components/brand/brand-provider.tsx`) publishes
+   them via React context and sets CSS variables `--brand-primary` and
+   `--brand-accent` on the document root. Every component that uses
+   `text-brand-primary`, `bg-brand-accent`, and similar utilities inherits the
+   values automatically.
+2. Next.js metadata uses the school name and favicon for the page title and
+   browser tab icon.
 
-## Pagination and Filtering
+Admins edit branding at `/admin/settings`. Changes take effect within 60
+seconds (the API caches the branding block).
 
-List endpoints accept the following query parameters:
+The theme (light, dark, or system) is stored in `localStorage` under
+`rogele.theme` and applied before first paint by an inline script in the root
+layout. There is no flash of the wrong theme.
 
-- `page` (default 1)
-- `per_page` (default 20, maximum 100)
-- `q` for free-text search where supported
-- resource-specific filters documented in the endpoint description
-- `sort` for comma-separated sort keys, prefixed with `-` for descending order
+## Notifications
 
-Responses use a common envelope:
+Every authenticated user has a notification bell in the header. The bell:
 
-    {
-      "data": [ ... ],
-      "meta": {
-        "page": 1,
-        "per_page": 20,
-        "total": 143,
-        "last_page": 8
-      }
-    }
+- Shows an unread count fetched from
+  `GET /api/v1/notifications/me/unread-count`.
+- Polls every 30 seconds to refresh the count.
+- Opens a dropdown with the latest 10 notifications.
+- Navigates to the notification's link, marking it read, when clicked.
+- Offers "Mark all read" inside the dropdown.
+
+The full list lives at `/notifications` with filters by type and unread-only.
+
+The admin bell's "View all" link goes to `/admin/notifications`, which provides
+a composer for broadcasts and a history of everything sent.
+
+## API Communication
+
+All API calls go through one of two paths:
+
+- **Server components** use `serverApiRequest` from `src/lib/server-api.ts`.
+  This reads the access token cookie and injects the `Authorization` header.
+- **Client components** use one of the `*.client.ts` helpers, which call
+  `/api/proxy/...`. The proxy route at
+  `src/app/api/proxy/[...path]/route.ts` reads the same cookie, forwards the
+  request to the Go API, and returns the response body.
+
+The proxy exports handlers for `GET`, `POST`, `PUT`, `PATCH`, `DELETE`,
+`HEAD`, and `OPTIONS`. If a new HTTP method is needed, add it to the exports.
+
+Non-JSON responses are handled defensively. If the API returns plain text (for
+example, a 404 body), the client wraps it as an error message instead of
+throwing a JSON parse exception.
+
+## Roles and Routes
+
+Route access is enforced by two layers of layout guards.
+
+The `(app)` group requires a session, and redirects admins to `/admin`. It
+wraps:
+
+- `/dashboard`
+- `/lessons`
+- `/homework`
+- `/quizzes`
+- `/subscription`
+- `/profile`
+- `/notifications`
+
+The `(admin)` group requires `role === 'admin'`, and redirects non-admins to
+`/dashboard`. It wraps every page under `/admin`.
+
+`/login`, `/register`, `/forgot-password`, and `/reset-password` are public.
+Middleware redirects signed-in users away from them.
 
 ## Development Workflow
 
 Common commands:
 
-    # Run the API
-    make run
+    # Start the dev server
+    pnpm dev
 
-    # Build a binary
-    make build
+    # Type-check the whole project
+    pnpm type-check
 
-    # Tidy dependencies
-    make tidy
+    # Lint
+    pnpm lint
 
-    # Format the codebase
-    make fmt
+    # Format with Prettier
+    pnpm format
 
-    # Run static analysis
-    make vet
+    # Build for production
+    pnpm build
 
-    # Run tests
-    make test
+    # Run the production build
+    pnpm start
 
-    # Apply migrations
-    make migrate-up
+Before committing, make sure:
 
-    # Roll back one migration
-    make migrate-down
+    pnpm type-check
+    pnpm build
 
-    # Create a new migration
-    make migrate-create name=add_some_table
+Both should pass with no errors.
 
-Before committing, run:
+## Building for Production
 
-    go build ./...
-    go vet ./...
-    gofmt -w .
+    pnpm build
 
-The API uses `log/slog` for structured logging. In development, logs are
-emitted as text. In production, logs are emitted as JSON. Every request is
-tagged with a request ID that is returned in the `X-Request-ID` response
-header.
+The build produces a `.next` directory with the compiled app. Serve it with:
 
-## Testing
+    pnpm start
 
-Run the test suite:
+Or place the output behind a reverse proxy (nginx, Caddy, Cloudflare) that
+terminates TLS and forwards to `localhost:3000`.
 
-    go test ./... -race -cover
+Environment variables needed at runtime:
 
-Tests are colocated with the code they exercise and named `*_test.go`.
+- `ROGELEDB_API_URL` — the URL of the Go API
+- `SESSION_SECRET` — must match between builds if cookies are expected to keep
+  working across deploys
+- `NEXT_PUBLIC_APP_URL` — the public URL of this app
 
 ## Deployment
 
-The service is distributed as a single static binary. Build it with:
+The app is designed to run as a Node.js process. Recommended deployments:
 
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/rogele ./cmd/api
+- **Vercel** — zero-config for Next.js. Set the environment variables in the
+  project settings. Note that `ROGELEDB_API_URL` must be reachable from Vercel's
+  servers, so the API cannot be on a private network.
+- **Docker + a VPS** — build a Docker image that runs `pnpm start` and expose
+  port 3000. Put Cloudflare or Caddy in front for TLS.
+- **Railway, Render, Fly.io** — all support Node.js processes and environment
+  variables.
 
-Run migrations before starting the new binary:
-
-    migrate -path ./migrations -database "$DATABASE_URL" up
-
-The binary reads configuration from environment variables and exits on startup
-if any required value is missing. A `/health` endpoint is available for
-liveness and readiness checks.
-
-Graceful shutdown is implemented. The server drains in-flight requests and
-stops background workers when it receives `SIGINT` or `SIGTERM`.
+Cookies are set with `secure: true` when `NODE_ENV=production`, so the app must
+be served over HTTPS in production.
 
 ## License
 
