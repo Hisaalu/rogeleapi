@@ -320,4 +320,118 @@ func scanPaymentRow(s paymentScanner) (*domain.Payment, error) {
 	return &p, nil
 }
 
+func (r *PaymentRepo) ListWithUsers(ctx context.Context, f repository.PaymentFilter) ([]*domain.Payment, error) {
+	var where []string
+	var args []any
+	i := 1
+
+	if f.UserID != nil {
+		where = append(where, fmt.Sprintf("p.user_id = $%d", i))
+		args = append(args, *f.UserID)
+		i++
+	}
+	if f.Status != nil {
+		where = append(where, fmt.Sprintf("p.status = $%d", i))
+		args = append(args, *f.Status)
+		i++
+	}
+
+	query := `
+		SELECT
+			p.id, p.user_id, p.subscription_id, p.amount, p.plan_type,
+			p.payment_method, p.transaction_id, p.payment_gateway_response,
+			p.phone_number, p.status, p.payment_date, p.created_at,
+			u.email, u.first_name, u.last_name
+		FROM payments p
+		LEFT JOIN users u ON u.id = p.user_id
+	`
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
+	query += " ORDER BY p.created_at DESC"
+
+	if f.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT $%d", i)
+		args = append(args, f.Limit)
+		i++
+	}
+	if f.Offset > 0 {
+		query += fmt.Sprintf(" OFFSET $%d", i)
+		args = append(args, f.Offset)
+	}
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list payments with users: %w", err)
+	}
+	defer rows.Close()
+
+	results := make([]*domain.Payment, 0, 16)
+	for rows.Next() {
+		var (
+			p          domain.Payment
+			userID     sql.NullInt64
+			subID      sql.NullInt64
+			amount     sql.NullFloat64
+			planType   sql.NullString
+			method     sql.NullString
+			txnID      sql.NullString
+			gatewayRaw []byte
+			phone      sql.NullString
+			payDate    sql.NullTime
+			email      sql.NullString
+			firstName  sql.NullString
+			lastName   sql.NullString
+		)
+		if err := rows.Scan(
+			&p.ID, &userID, &subID, &amount, &planType, &method,
+			&txnID, &gatewayRaw, &phone, &p.Status, &payDate, &p.CreatedAt,
+			&email, &firstName, &lastName,
+		); err != nil {
+			return nil, err
+		}
+		if userID.Valid {
+			p.UserID = &userID.Int64
+		}
+		if subID.Valid {
+			p.SubscriptionID = &subID.Int64
+		}
+		if amount.Valid {
+			p.Amount = &amount.Float64
+		}
+		if planType.Valid {
+			p.PlanType = &planType.String
+		}
+		if method.Valid {
+			p.PaymentMethod = &method.String
+		}
+		if txnID.Valid {
+			p.TransactionID = &txnID.String
+		}
+		if len(gatewayRaw) > 0 {
+			var gateway map[string]any
+			if err := json.Unmarshal(gatewayRaw, &gateway); err == nil {
+				p.PaymentGatewayResponse = gateway
+			}
+		}
+		if phone.Valid {
+			p.PhoneNumber = &phone.String
+		}
+		if payDate.Valid {
+			p.PaymentDate = &payDate.Time
+		}
+		if email.Valid {
+			p.UserEmail = &email.String
+		}
+		if firstName.Valid {
+			p.UserFirstName = &firstName.String
+		}
+		if lastName.Valid {
+			p.UserLastName = &lastName.String
+		}
+		results = append(results, &p)
+	}
+	return results, rows.Err()
+}
+
 var _ repository.PaymentRepository = (*PaymentRepo)(nil)

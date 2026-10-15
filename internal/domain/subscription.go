@@ -44,6 +44,10 @@ type Subscription struct {
 	UpgradedTo             *string              `json:"upgraded_to,omitempty"`
 	OriginalSubscriptionID *int64               `json:"original_subscription_id,omitempty"`
 	CreatedAt              time.Time            `json:"created_at"`
+
+	UserEmail     *string `json:"user_email,omitempty"`
+	UserFirstName *string `json:"user_first_name,omitempty"`
+	UserLastName  *string `json:"user_last_name,omitempty"`
 }
 
 type FreeTrial struct {

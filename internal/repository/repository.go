@@ -136,6 +136,7 @@ type SubscriptionRepository interface {
 	GetByID(ctx context.Context, id int64) (*domain.Subscription, error)
 	GetActiveByUser(ctx context.Context, userID int64) (*domain.Subscription, error)
 	List(ctx context.Context, f SubscriptionFilter) ([]*domain.Subscription, error)
+	ListWithUsers(ctx context.Context, f SubscriptionFilter) ([]*domain.Subscription, error)
 	Update(ctx context.Context, s *domain.Subscription) error
 	ExpireOverdue(ctx context.Context) (int, error)
 }
@@ -159,6 +160,7 @@ type PaymentRepository interface {
 	GetByID(ctx context.Context, id int64) (*domain.Payment, error)
 	GetByTransactionID(ctx context.Context, txnID string) (*domain.Payment, error)
 	List(ctx context.Context, f PaymentFilter) ([]*domain.Payment, error)
+	ListWithUsers(ctx context.Context, f PaymentFilter) ([]*domain.Payment, error)
 	Update(ctx context.Context, p *domain.Payment) error
 
 	CreateHistory(ctx context.Context, h *domain.PaymentHistory) (*domain.PaymentHistory, error)

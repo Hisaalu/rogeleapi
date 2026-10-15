@@ -65,7 +65,7 @@ func (s *SubscriptionService) ListAll(ctx context.Context, actor ActorContext, f
 	if actor.Role != domain.RoleAdmin {
 		return nil, fmt.Errorf("%w: admin only", domain.ErrForbidden)
 	}
-	return s.subs.List(ctx, f)
+	return s.subs.ListWithUsers(ctx, f)
 }
 
 func (s *SubscriptionService) StartTrial(ctx context.Context, actor ActorContext) (*domain.FreeTrial, error) {

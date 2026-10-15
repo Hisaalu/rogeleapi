@@ -208,4 +208,114 @@ func scanSubscriptionRow(s subscriptionScanner) (*domain.Subscription, error) {
 	return &sub, nil
 }
 
+func (r *SubscriptionRepo) ListWithUsers(ctx context.Context, f repository.SubscriptionFilter) ([]*domain.Subscription, error) {
+	var where []string
+	var args []any
+	i := 1
+
+	if f.UserID != nil {
+		where = append(where, fmt.Sprintf("s.user_id = $%d", i))
+		args = append(args, *f.UserID)
+		i++
+	}
+	if f.Status != nil {
+		where = append(where, fmt.Sprintf("s.status = $%d", i))
+		args = append(args, *f.Status)
+		i++
+	}
+
+	query := `
+		SELECT
+			s.id, s.user_id, s.plan_type, s.amount, s.start_date, s.end_date,
+			s.payment_method, s.transaction_id, s.status, s.auto_renew,
+			s.is_upgrade, s.upgraded_from, s.upgraded_at, s.upgraded_to,
+			s.original_subscription_id, s.created_at,
+			u.email, u.first_name, u.last_name
+		FROM subscriptions s
+		LEFT JOIN users u ON u.id = s.user_id
+	`
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
+	query += " ORDER BY s.created_at DESC"
+
+	if f.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT $%d", i)
+		args = append(args, f.Limit)
+		i++
+	}
+	if f.Offset > 0 {
+		query += fmt.Sprintf(" OFFSET $%d", i)
+		args = append(args, f.Offset)
+	}
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list subscriptions with users: %w", err)
+	}
+	defer rows.Close()
+
+	results := make([]*domain.Subscription, 0, 16)
+	for rows.Next() {
+		var (
+			s          domain.Subscription
+			userID     sql.NullInt64
+			amount     sql.NullFloat64
+			payMethod  sql.NullString
+			txnID      sql.NullString
+			upFrom     sql.NullString
+			upgradedAt sql.NullTime
+			upTo       sql.NullString
+			origSubID  sql.NullInt64
+			email      sql.NullString
+			firstName  sql.NullString
+			lastName   sql.NullString
+		)
+		if err := rows.Scan(
+			&s.ID, &userID, &s.PlanType, &amount, &s.StartDate, &s.EndDate,
+			&payMethod, &txnID, &s.Status, &s.AutoRenew,
+			&s.IsUpgrade, &upFrom, &upgradedAt, &upTo,
+			&origSubID, &s.CreatedAt,
+			&email, &firstName, &lastName,
+		); err != nil {
+			return nil, err
+		}
+		if userID.Valid {
+			s.UserID = &userID.Int64
+		}
+		if amount.Valid {
+			s.Amount = &amount.Float64
+		}
+		if payMethod.Valid {
+			s.PaymentMethod = &payMethod.String
+		}
+		if txnID.Valid {
+			s.TransactionID = &txnID.String
+		}
+		if upFrom.Valid {
+			s.UpgradedFrom = &upFrom.String
+		}
+		if upgradedAt.Valid {
+			s.UpgradedAt = &upgradedAt.Time
+		}
+		if upTo.Valid {
+			s.UpgradedTo = &upTo.String
+		}
+		if origSubID.Valid {
+			s.OriginalSubscriptionID = &origSubID.Int64
+		}
+		if email.Valid {
+			s.UserEmail = &email.String
+		}
+		if firstName.Valid {
+			s.UserFirstName = &firstName.String
+		}
+		if lastName.Valid {
+			s.UserLastName = &lastName.String
+		}
+		results = append(results, &s)
+	}
+	return results, rows.Err()
+}
+
 var _ repository.SubscriptionRepository = (*SubscriptionRepo)(nil)

@@ -69,7 +69,6 @@ func run() error {
 	emailRepo := postgres.NewEmailRepo(database)
 	settingsRepo := postgres.NewSettingsRepo(database)
 	adminStatsRepo := postgres.NewAdminStatsRepo(database)
-	adminHandler := handler.NewAdminHandler(adminStatsRepo, log)
 
 	tokenManager := auth.NewTokenManager(
 		cfg.JWT.Secret,
@@ -147,26 +146,37 @@ func run() error {
 	}
 
 	configHandler := handler.NewConfigHandler(settingsRepo, log)
+	adminHandler := handler.NewAdminHandler(adminStatsRepo, log)
+	adminUserHandler := handler.NewAdminUserHandler(
+		repos.User,
+		repos.Quiz,
+		repos.Homework,
+		repos.PasswordReset,
+		mailerSvc,
+		cfg.Email.WebBaseURL,
+		log,
+	)
 
 	router := server.NewRouter(server.RouterDeps{
-		Log:           log,
-		Version:       version,
-		DB:            database,
-		Repos:         repos,
-		Tokens:        tokenManager,
-		AuthSvc:       authSvc,
-		UserSvc:       userSvc,
-		LessonSvc:     lessonSvc,
-		HomeworkSvc:   homeworkSvc,
-		QuizSvc:       quizSvc,
-		SubSvc:        subSvc,
-		PaySvc:        paySvc,
-		CampaignSvc:   campaignSvc,
-		ConfigHandler: configHandler,
-		CRUDConfig:    crudConfig,
-		CRUDRepo:      crudRepo,
-		UploadHandler: uploadHandler,
-		AdminHandler:  adminHandler,
+		Log:              log,
+		Version:          version,
+		DB:               database,
+		Repos:            repos,
+		Tokens:           tokenManager,
+		AuthSvc:          authSvc,
+		UserSvc:          userSvc,
+		LessonSvc:        lessonSvc,
+		HomeworkSvc:      homeworkSvc,
+		QuizSvc:          quizSvc,
+		SubSvc:           subSvc,
+		PaySvc:           paySvc,
+		CampaignSvc:      campaignSvc,
+		ConfigHandler:    configHandler,
+		AdminHandler:     adminHandler,
+		AdminUserHandler: adminUserHandler,
+		CRUDConfig:       crudConfig,
+		CRUDRepo:         crudRepo,
+		UploadHandler:    uploadHandler,
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.App.Port)

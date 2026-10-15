@@ -28,6 +28,10 @@ type Payment struct {
 	Status                 PaymentStatus  `json:"status"`
 	PaymentDate            *time.Time     `json:"payment_date,omitempty"`
 	CreatedAt              time.Time      `json:"created_at"`
+
+	UserEmail     *string `json:"user_email,omitempty"`
+	UserFirstName *string `json:"user_first_name,omitempty"`
+	UserLastName  *string `json:"user_last_name,omitempty"`
 }
 
 type PaymentHistory struct {

@@ -86,3 +86,27 @@ resources:
       message: { type: string,  writable: true, required: true }
       link:    { type: string,  writable: true }
       is_read: { type: boolean, writable: true }
+
+  - name: users
+    table: users
+    primary_key: id
+    system_columns: [created_at]
+    searchable: [email, first_name, last_name]
+    filterable: [role, class_id, is_active, is_suspended]
+    default_sort: [-created_at]
+    read_roles: [admin]
+    write_roles: [admin]
+    columns:
+      email:          { type: string,  writable: false }
+      registration_number: { type: string, writable: true }
+      first_name:     { type: string,  writable: true }
+      last_name:      { type: string,  writable: true }
+      phone:          { type: string,  writable: true }
+      bio:            { type: string,  writable: true }
+      qualification:  { type: string,  writable: true }
+      specialization: { type: string,  writable: true }
+      role:           { type: string,  writable: true }
+      class_id:       { type: integer, writable: true }
+      is_active:      { type: boolean, writable: true }
+      is_suspended:   { type: boolean, writable: true }
+      profile_photo:  { type: string,  writable: true }

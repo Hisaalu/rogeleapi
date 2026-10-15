@@ -194,7 +194,7 @@ func (s *PaymentService) ListAll(ctx context.Context, actor ActorContext, f repo
 	if actor.Role != domain.RoleAdmin {
 		return nil, fmt.Errorf("%w: admin only", domain.ErrForbidden)
 	}
-	return s.payments.List(ctx, f)
+	return s.payments.ListWithUsers(ctx, f)
 }
 
 func (s *PaymentService) ListHistory(ctx context.Context, actor ActorContext) ([]*domain.PaymentHistory, error) {

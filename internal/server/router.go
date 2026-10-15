@@ -17,24 +17,25 @@ import (
 )
 
 type RouterDeps struct {
-	Log           *slog.Logger
-	Version       string
-	DB            *sql.DB
-	Repos         *repository.Repositories
-	Tokens        *auth.TokenManager
-	AuthSvc       *service.AuthService
-	UserSvc       *service.UserService
-	LessonSvc     *service.LessonService
-	HomeworkSvc   *service.HomeworkService
-	QuizSvc       *service.QuizService
-	SubSvc        *service.SubscriptionService
-	PaySvc        *service.PaymentService
-	CampaignSvc   *service.CampaignService
-	ConfigHandler *handler.ConfigHandler
-	CRUDConfig    *crud.Config
-	CRUDRepo      *crud.Repository
-	UploadHandler *handler.UploadHandler
-	AdminHandler  *handler.AdminHandler
+	Log              *slog.Logger
+	Version          string
+	DB               *sql.DB
+	Repos            *repository.Repositories
+	Tokens           *auth.TokenManager
+	AuthSvc          *service.AuthService
+	UserSvc          *service.UserService
+	LessonSvc        *service.LessonService
+	HomeworkSvc      *service.HomeworkService
+	QuizSvc          *service.QuizService
+	SubSvc           *service.SubscriptionService
+	PaySvc           *service.PaymentService
+	CampaignSvc      *service.CampaignService
+	ConfigHandler    *handler.ConfigHandler
+	AdminHandler     *handler.AdminHandler
+	AdminUserHandler *handler.AdminUserHandler
+	CRUDConfig       *crud.Config
+	CRUDRepo         *crud.Repository
+	UploadHandler    *handler.UploadHandler
 }
 
 func NewRouter(deps RouterDeps) http.Handler {
@@ -167,13 +168,23 @@ func NewRouter(deps RouterDeps) http.Handler {
 			})
 		}
 
-		if deps.AdminHandler != nil {
+		if deps.AdminHandler != nil || deps.AdminUserHandler != nil {
 			r.Route("/admin", func(r chi.Router) {
 				r.Use(middleware.Authenticate(deps.Tokens))
-				r.Get("/stats", deps.AdminHandler.Overview)
-				r.Get("/activity", deps.AdminHandler.RecentActivity)
-				r.Get("/recent-signups", deps.AdminHandler.RecentSignups)
-				r.Get("/recent-payments", deps.AdminHandler.RecentPayments)
+
+				if deps.AdminHandler != nil {
+					r.Get("/stats", deps.AdminHandler.Overview)
+					r.Get("/activity", deps.AdminHandler.RecentActivity)
+					r.Get("/recent-signups", deps.AdminHandler.RecentSignups)
+					r.Get("/recent-payments", deps.AdminHandler.RecentPayments)
+				}
+
+				if deps.AdminUserHandler != nil {
+					r.Get("/users/{id}/attempts", deps.AdminUserHandler.QuizAttempts)
+					r.Get("/users/{id}/submissions", deps.AdminUserHandler.HomeworkSubmissions)
+					r.Post("/users/{id}/force-reset", deps.AdminUserHandler.ForcePasswordReset)
+					r.Post("/users/{id}/set-password", deps.AdminUserHandler.SetPassword)
+				}
 			})
 		}
 
