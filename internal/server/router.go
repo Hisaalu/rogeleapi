@@ -29,10 +29,11 @@ type RouterDeps struct {
 	QuizSvc       *service.QuizService
 	SubSvc        *service.SubscriptionService
 	PaySvc        *service.PaymentService
+	CampaignSvc   *service.CampaignService
+	ConfigHandler *handler.ConfigHandler
 	CRUDConfig    *crud.Config
 	CRUDRepo      *crud.Repository
 	UploadHandler *handler.UploadHandler
-	CampaignSvc   *service.CampaignService
 }
 
 func NewRouter(deps RouterDeps) http.Handler {
@@ -48,6 +49,10 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Get("/health", health.Check)
 
 	r.Route("/api/v1", func(r chi.Router) {
+		if deps.ConfigHandler != nil {
+			r.Get("/config/public", deps.ConfigHandler.PublicConfig)
+		}
+
 		authHandler := handler.NewAuthHandler(deps.AuthSvc, deps.UserSvc, deps.Tokens, deps.Log)
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/register", authHandler.Register)
@@ -142,21 +147,6 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Get("/{id}/status", payHandler.GetStatus)
 		})
 
-		campaignHandler := handler.NewCampaignHandler(deps.CampaignSvc, deps.Log)
-		r.Route("/admin/email-campaigns", func(r chi.Router) {
-			r.Use(middleware.Authenticate(deps.Tokens))
-			r.Get("/", campaignHandler.List)
-			r.Post("/", campaignHandler.Create)
-			r.Route("/{id}", func(r chi.Router) {
-				r.Get("/", campaignHandler.Get)
-				r.Patch("/", campaignHandler.Update)
-				r.Delete("/", campaignHandler.Delete)
-				r.Post("/preview", campaignHandler.Preview)
-				r.Post("/send", campaignHandler.Send)
-				r.Get("/logs", campaignHandler.Logs)
-			})
-		})
-
 		webhookHandler := handler.NewWebhookHandler(deps.PaySvc, deps.Log)
 		r.Post("/webhooks/mtn", webhookHandler.MTN)
 		r.Post("/webhooks/airtel", webhookHandler.Airtel)
@@ -165,6 +155,23 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Route("/uploads", func(r chi.Router) {
 				r.Use(middleware.Authenticate(deps.Tokens))
 				r.Post("/presign", deps.UploadHandler.Presign)
+			})
+		}
+
+		if deps.CampaignSvc != nil {
+			campaignHandler := handler.NewCampaignHandler(deps.CampaignSvc, deps.Log)
+			r.Route("/admin/email-campaigns", func(r chi.Router) {
+				r.Use(middleware.Authenticate(deps.Tokens))
+				r.Get("/", campaignHandler.List)
+				r.Post("/", campaignHandler.Create)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", campaignHandler.Get)
+					r.Patch("/", campaignHandler.Update)
+					r.Delete("/", campaignHandler.Delete)
+					r.Post("/preview", campaignHandler.Preview)
+					r.Post("/send", campaignHandler.Send)
+					r.Get("/logs", campaignHandler.Logs)
+				})
 			})
 		}
 

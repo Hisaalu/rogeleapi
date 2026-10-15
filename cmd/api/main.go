@@ -67,6 +67,7 @@ func run() error {
 
 	planRepo := postgres.NewPlanRepo(database)
 	emailRepo := postgres.NewEmailRepo(database)
+	settingsRepo := postgres.NewSettingsRepo(database)
 
 	tokenManager := auth.NewTokenManager(
 		cfg.JWT.Secret,
@@ -143,6 +144,8 @@ func run() error {
 		log.Warn("r2 storage is not configured")
 	}
 
+	configHandler := handler.NewConfigHandler(settingsRepo, log)
+
 	router := server.NewRouter(server.RouterDeps{
 		Log:           log,
 		Version:       version,
@@ -157,6 +160,7 @@ func run() error {
 		SubSvc:        subSvc,
 		PaySvc:        paySvc,
 		CampaignSvc:   campaignSvc,
+		ConfigHandler: configHandler,
 		CRUDConfig:    crudConfig,
 		CRUDRepo:      crudRepo,
 		UploadHandler: uploadHandler,
