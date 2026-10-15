@@ -56,6 +56,11 @@ type QuizAttempt struct {
 	Status         QuizAttemptStatus `json:"status"`
 	StartedAt      time.Time         `json:"started_at"`
 	CompletedAt    *time.Time        `json:"completed_at,omitempty"`
+
+	StudentEmail     *string `json:"student_email,omitempty"`
+	StudentFirstName *string `json:"student_first_name,omitempty"`
+	StudentLastName  *string `json:"student_last_name,omitempty"`
+	StudentRegNo     *string `json:"student_registration_number,omitempty"`
 }
 
 type QuizAttemptAnswer struct {

@@ -17,6 +17,7 @@ type CreateQuizInput struct {
 	TimeLimit    *int
 	PassingScore int
 	MaxAttempts  int
+	IsPublished  bool
 	StartDate    *time.Time
 	EndDate      *time.Time
 }
@@ -69,6 +70,12 @@ func (s *QuizService) Create(ctx context.Context, teacherID int64, in CreateQuiz
 	if in.MaxAttempts < 1 {
 		in.MaxAttempts = 3
 	}
+
+	status := "draft"
+	if in.IsPublished {
+		status = "published"
+	}
+
 	q := &domain.Quiz{
 		Title:        in.Title,
 		Description:  in.Description,
@@ -78,9 +85,10 @@ func (s *QuizService) Create(ctx context.Context, teacherID int64, in CreateQuiz
 		TimeLimit:    in.TimeLimit,
 		PassingScore: in.PassingScore,
 		MaxAttempts:  in.MaxAttempts,
+		IsPublished:  in.IsPublished,
 		StartDate:    in.StartDate,
 		EndDate:      in.EndDate,
-		Status:       "draft",
+		Status:       status,
 	}
 	return s.quizzes.Create(ctx, q)
 }
@@ -280,20 +288,22 @@ func (s *QuizService) StartAttempt(ctx context.Context, quizID int64, actor Acto
 	if classID == nil || q.ClassID == nil || *classID != *q.ClassID {
 		return nil, fmt.Errorf("%w: quiz is not for your class", domain.ErrForbidden)
 	}
-	now := time.Now()
-	if q.StartDate != nil && now.Before(*q.StartDate) {
+
+	now := time.Now().UTC()
+	if q.StartDate != nil && now.Before(q.StartDate.UTC()) {
 		return nil, fmt.Errorf("%w: quiz has not started yet", domain.ErrForbidden)
 	}
-	if q.EndDate != nil && now.After(*q.EndDate) {
+	if q.EndDate != nil && now.After(q.EndDate.UTC()) {
 		return nil, fmt.Errorf("%w: quiz has ended", domain.ErrForbidden)
 	}
 
 	if existing, err := s.quizzes.GetInProgressAttempt(ctx, quizID, actor.UserID); err == nil {
 		if q.TimeLimit != nil && *q.TimeLimit > 0 {
-			deadline := existing.StartedAt.Add(time.Duration(*q.TimeLimit) * time.Minute)
-			if time.Now().After(deadline) {
+			started := existing.StartedAt.UTC()
+			deadline := started.Add(time.Duration(*q.TimeLimit) * time.Minute)
+			if time.Now().UTC().After(deadline) {
 				existing.Status = domain.QuizAttemptExpired
-				completed := time.Now()
+				completed := time.Now().UTC()
 				existing.CompletedAt = &completed
 				_ = s.quizzes.UpdateAttempt(ctx, existing)
 			} else {
@@ -312,7 +322,11 @@ func (s *QuizService) StartAttempt(ctx context.Context, quizID int64, actor Acto
 			return nil, err
 		}
 		if completed >= q.MaxAttempts {
-			return nil, fmt.Errorf("%w: max attempts reached", domain.ErrForbidden)
+			return nil, fmt.Errorf(
+				"%w: you have used all %d attempts for this quiz",
+				domain.ErrForbidden,
+				q.MaxAttempts,
+			)
 		}
 	}
 
@@ -320,7 +334,7 @@ func (s *QuizService) StartAttempt(ctx context.Context, quizID int64, actor Acto
 		QuizID:    &quizID,
 		UserID:    &actor.UserID,
 		Status:    domain.QuizAttemptInProgress,
-		StartedAt: time.Now(),
+		StartedAt: time.Now().UTC(),
 	}
 	return s.quizzes.CreateAttempt(ctx, attempt)
 }
@@ -336,6 +350,17 @@ func (s *QuizService) GetAttempt(ctx context.Context, attemptID int64, actor Act
 		}
 	}
 	return a, nil
+}
+
+func (s *QuizService) ListAttemptsForQuiz(ctx context.Context, quizID int64, actor ActorContext) ([]*domain.QuizAttempt, error) {
+	q, err := s.quizzes.GetByID(ctx, quizID)
+	if err != nil {
+		return nil, err
+	}
+	if err := canEditQuiz(q, actor); err != nil {
+		return nil, err
+	}
+	return s.quizzes.ListAttemptsWithStudents(ctx, quizID)
 }
 
 func (s *QuizService) SubmitAttempt(ctx context.Context, attemptID int64, actor ActorContext, answers []AnswerInput) (*domain.QuizAttempt, error) {
@@ -398,7 +423,7 @@ func (s *QuizService) SubmitAttempt(ctx context.Context, attemptID int64, actor 
 	if timeTaken < 0 {
 		timeTaken = 0
 	}
-	completed := time.Now()
+	completed := time.Now().UTC()
 
 	a.Score = &score
 	a.TotalQuestions = &totalQuestions
@@ -481,4 +506,15 @@ func answerLetter(n int) string {
 		return "D"
 	}
 	return ""
+}
+
+func (s *QuizService) DeleteAllAttempts(ctx context.Context, quizID int64, actor ActorContext) error {
+	q, err := s.quizzes.GetByID(ctx, quizID)
+	if err != nil {
+		return err
+	}
+	if err := canEditQuiz(q, actor); err != nil {
+		return err
+	}
+	return s.quizzes.DeleteAllAttempts(ctx, quizID)
 }

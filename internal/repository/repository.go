@@ -118,6 +118,10 @@ type QuizRepository interface {
 
 	SaveAnswer(ctx context.Context, a *domain.QuizAttemptAnswer) error
 	ListAnswers(ctx context.Context, attemptID int64) ([]*domain.QuizAttemptAnswer, error)
+	ListAttemptsByQuiz(ctx context.Context, quizID int64) ([]*domain.QuizAttempt, error)
+	ListAttemptsWithStudents(ctx context.Context, quizID int64) ([]*domain.QuizAttempt, error)
+
+	DeleteAllAttempts(ctx context.Context, quizID int64) error
 }
 
 type SubscriptionFilter struct {

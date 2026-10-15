@@ -14,6 +14,7 @@ type CreateQuizRequest struct {
 	TimeLimit    *int       `json:"time_limit,omitempty"`
 	PassingScore int        `json:"passing_score,omitempty"`
 	MaxAttempts  int        `json:"max_attempts,omitempty"`
+	IsPublished  bool       `json:"is_published,omitempty"`
 	StartDate    *time.Time `json:"start_date,omitempty"`
 	EndDate      *time.Time `json:"end_date,omitempty"`
 }
@@ -95,6 +96,11 @@ type AttemptResponse struct {
 	Status         string     `json:"status"`
 	StartedAt      time.Time  `json:"started_at"`
 	CompletedAt    *time.Time `json:"completed_at,omitempty"`
+
+	StudentEmail     *string `json:"student_email,omitempty"`
+	StudentFirstName *string `json:"student_first_name,omitempty"`
+	StudentLastName  *string `json:"student_last_name,omitempty"`
+	StudentRegNo     *string `json:"student_registration_number,omitempty"`
 }
 
 func QuizFromDomain(q *domain.Quiz) QuizResponse {
@@ -139,6 +145,10 @@ func AttemptFromDomain(a *domain.QuizAttempt) AttemptResponse {
 		Score: a.Score, TotalQuestions: a.TotalQuestions,
 		CorrectAnswers: a.CorrectAnswers, TimeTaken: a.TimeTaken,
 		Status: string(a.Status), StartedAt: a.StartedAt, CompletedAt: a.CompletedAt,
+		StudentEmail:     a.StudentEmail,
+		StudentFirstName: a.StudentFirstName,
+		StudentLastName:  a.StudentLastName,
+		StudentRegNo:     a.StudentRegNo,
 	}
 }
 

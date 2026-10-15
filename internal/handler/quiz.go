@@ -105,6 +105,7 @@ func (h *QuizHandler) Create(w http.ResponseWriter, r *http.Request) {
 		TimeLimit:    req.TimeLimit,
 		PassingScore: req.PassingScore,
 		MaxAttempts:  req.MaxAttempts,
+		IsPublished:  req.IsPublished,
 		StartDate:    req.StartDate,
 		EndDate:      req.EndDate,
 	})
@@ -350,4 +351,39 @@ func (h *QuizHandler) actor(w http.ResponseWriter, r *http.Request) (service.Act
 		UserID: claims.UserID,
 		Role:   claims.Role,
 	}, true
+}
+
+func (h *QuizHandler) ListAttempts(w http.ResponseWriter, r *http.Request) {
+	actor, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "id must be an integer")
+		return
+	}
+	attempts, err := h.svc.ListAttemptsForQuiz(r.Context(), id, actor)
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+	httputil.JSON(w, http.StatusOK, dto.AttemptsFromDomain(attempts))
+}
+
+func (h *QuizHandler) DeleteAllAttempts(w http.ResponseWriter, r *http.Request) {
+	actor, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "id must be an integer")
+		return
+	}
+	if err := h.svc.DeleteAllAttempts(r.Context(), id, actor); err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+	httputil.NoContent(w)
 }

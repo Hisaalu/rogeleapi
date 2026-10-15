@@ -512,4 +512,120 @@ func joinAnd(parts []string) string {
 	return out
 }
 
+func (r *QuizRepo) ListAttemptsByQuiz(ctx context.Context, quizID int64) ([]*domain.QuizAttempt, error) {
+	query := `SELECT ` + attemptColumns + ` FROM quiz_attempts WHERE quiz_id = $1 ORDER BY started_at DESC`
+	rows, err := r.db.QueryContext(ctx, query, quizID)
+	if err != nil {
+		return nil, fmt.Errorf("list attempts by quiz: %w", err)
+	}
+	defer rows.Close()
+
+	results := make([]*domain.QuizAttempt, 0, 16)
+	for rows.Next() {
+		a, err := scanAttemptRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, a)
+	}
+	return results, rows.Err()
+}
+
+func (r *QuizRepo) ListAttemptsWithStudents(ctx context.Context, quizID int64) ([]*domain.QuizAttempt, error) {
+	query := `
+		SELECT
+			a.id, a.quiz_id, a.user_id, a.score, a.total_questions, a.correct_answers,
+			a.time_taken, a.status, a.started_at, a.completed_at,
+			u.email, u.first_name, u.last_name, u.registration_number
+		FROM quiz_attempts a
+		LEFT JOIN users u ON u.id = a.user_id
+		WHERE a.quiz_id = $1
+		ORDER BY a.started_at DESC
+	`
+	rows, err := r.db.QueryContext(ctx, query, quizID)
+	if err != nil {
+		return nil, fmt.Errorf("list attempts with students: %w", err)
+	}
+	defer rows.Close()
+
+	results := make([]*domain.QuizAttempt, 0, 16)
+	for rows.Next() {
+		var (
+			a         domain.QuizAttempt
+			quizID    sql.NullInt64
+			userID    sql.NullInt64
+			score     sql.NullInt64
+			totalQs   sql.NullInt64
+			correct   sql.NullInt64
+			timeTaken sql.NullInt64
+			completed sql.NullTime
+			email     sql.NullString
+			firstName sql.NullString
+			lastName  sql.NullString
+			regNo     sql.NullString
+		)
+		if err := rows.Scan(
+			&a.ID, &quizID, &userID, &score, &totalQs, &correct,
+			&timeTaken, &a.Status, &a.StartedAt, &completed,
+			&email, &firstName, &lastName, &regNo,
+		); err != nil {
+			return nil, err
+		}
+		if quizID.Valid {
+			a.QuizID = &quizID.Int64
+		}
+		if userID.Valid {
+			a.UserID = &userID.Int64
+		}
+		if score.Valid {
+			v := int(score.Int64)
+			a.Score = &v
+		}
+		if totalQs.Valid {
+			v := int(totalQs.Int64)
+			a.TotalQuestions = &v
+		}
+		if correct.Valid {
+			v := int(correct.Int64)
+			a.CorrectAnswers = &v
+		}
+		if timeTaken.Valid {
+			v := int(timeTaken.Int64)
+			a.TimeTaken = &v
+		}
+		if completed.Valid {
+			a.CompletedAt = &completed.Time
+		}
+		if email.Valid {
+			a.StudentEmail = &email.String
+		}
+		if firstName.Valid {
+			a.StudentFirstName = &firstName.String
+		}
+		if lastName.Valid {
+			a.StudentLastName = &lastName.String
+		}
+		if regNo.Valid {
+			a.StudentRegNo = &regNo.String
+		}
+		results = append(results, &a)
+	}
+	return results, rows.Err()
+}
+
+func (r *QuizRepo) DeleteAllAttempts(ctx context.Context, quizID int64) error {
+	_, err := r.db.ExecContext(ctx, `
+		DELETE FROM quiz_attempt_answers
+		WHERE attempt_id IN (SELECT id FROM quiz_attempts WHERE quiz_id = $1)
+	`, quizID)
+	if err != nil {
+		return fmt.Errorf("delete attempt answers: %w", err)
+	}
+	_, err = r.db.ExecContext(ctx, `DELETE FROM quiz_attempts WHERE quiz_id = $1`, quizID)
+	if err != nil {
+		return fmt.Errorf("delete attempts: %w", err)
+	}
+	return nil
+}
+
 var _ repository.QuizRepository = (*QuizRepo)(nil)
