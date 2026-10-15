@@ -183,7 +183,8 @@ type NotificationRepository interface {
 	MarkRead(ctx context.Context, id, userID int64) error
 	MarkAllRead(ctx context.Context, userID int64) (int, error)
 	AdminList(ctx context.Context, f AdminListFilter) ([]*domain.Notification, error)
-	CountSentBroadcast(ctx context.Context) (int, error)
+	CountBroadcasts(ctx context.Context) (int, error)
+	ListBroadcasts(ctx context.Context, limit, offset int) ([]*domain.Notification, error)
 }
 
 type AdminListFilter struct {

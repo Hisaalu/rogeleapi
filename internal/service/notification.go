@@ -95,3 +95,17 @@ func (s *NotificationService) NotifyUser(
 ) error {
 	return s.NotifyUsers(ctx, []int64{userID}, notifType, title, message, link)
 }
+
+func (s *NotificationService) ListBroadcasts(ctx context.Context, actor ActorContext, limit, offset int) ([]*domain.Notification, error) {
+	if actor.Role != domain.RoleAdmin {
+		return nil, fmt.Errorf("%w: admin only", domain.ErrForbidden)
+	}
+	return s.repo.ListBroadcasts(ctx, limit, offset)
+}
+
+func (s *NotificationService) CountBroadcasts(ctx context.Context, actor ActorContext) (int, error) {
+	if actor.Role != domain.RoleAdmin {
+		return 0, fmt.Errorf("%w: admin only", domain.ErrForbidden)
+	}
+	return s.repo.CountBroadcasts(ctx)
+}

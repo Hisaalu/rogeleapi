@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/Hisaalu/rogele/internal/dberr"
 	"github.com/Hisaalu/rogele/internal/domain"
@@ -22,21 +21,23 @@ func NewNotificationRepo(db *sql.DB) *NotificationRepo {
 }
 
 const notificationColumns = `
-	id, user_id, type, title, message, link, is_read, created_at
+	n.id, n.user_id, n.type, n.title, n.message, n.link, n.created_at
 `
 
-// Create inserts a single notification. If n.UserID is nil, it's a broadcast.
 func (r *NotificationRepo) Create(ctx context.Context, n *domain.Notification) (*domain.Notification, error) {
 	row := r.db.QueryRowContext(ctx, `
 		INSERT INTO notifications (user_id, type, title, message, link)
 		VALUES ($1,$2,$3,$4,$5)
-		RETURNING `+notificationColumns,
-		n.UserID, n.Type, n.Title, n.Message, n.Link,
-	)
-	return scanNotification(row)
+		RETURNING id, user_id, type, title, message, link, is_read, created_at
+	`, n.UserID, n.Type, n.Title, n.Message, n.Link)
+
+	out, err := scanNotificationSingle(row)
+	if err != nil {
+		return nil, dberr.Translate(fmt.Errorf("create notification: %w", err))
+	}
+	return out, nil
 }
 
-// CreateBulk inserts one row per userID. Used by event emitters.
 func (r *NotificationRepo) CreateBulk(ctx context.Context, userIDs []int64, n *domain.Notification) (int, error) {
 	if len(userIDs) == 0 {
 		return 0, nil
@@ -48,13 +49,9 @@ func (r *NotificationRepo) CreateBulk(ctx context.Context, userIDs []int64, n *d
 		i            = 1
 	)
 
-	// Column list is fixed; each row is ($1,$2,$3,$4,$5,NULL)
-	// We don't reuse the same args — we insert type/title/message/link once
-	// per row. Postgres doesn't support "reuse" in VALUES lists.
 	for _, uid := range userIDs {
 		placeholders = append(placeholders, fmt.Sprintf(
-			"($%d,$%d,$%d,$%d,$%d)",
-			i, i+1, i+2, i+3, i+4,
+			"($%d,$%d,$%d,$%d,$%d)", i, i+1, i+2, i+3, i+4,
 		))
 		args = append(args, uid, n.Type, n.Title, n.Message, n.Link)
 		i += 5
@@ -71,17 +68,29 @@ func (r *NotificationRepo) CreateBulk(ctx context.Context, userIDs []int64, n *d
 	return int(count), nil
 }
 
-// ListForUser returns notifications visible to a user: their own + broadcasts.
+// ListForUser returns notifications visible to a user with a computed `is_read` flag.
+// is_read is true if:
+//   - the notification's own `is_read` column is true (legacy per-user rows), OR
+//   - the user has an entry in notification_reads
 func (r *NotificationRepo) ListForUser(ctx context.Context, userID int64, limit, offset int) ([]*domain.Notification, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
 
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT `+notificationColumns+`
-		FROM notifications
-		WHERE user_id = $1 OR user_id IS NULL
-		ORDER BY created_at DESC
+		SELECT
+			n.id, n.user_id, n.type, n.title, n.message, n.link,
+			CASE
+				WHEN n.user_id = $1 THEN n.is_read
+				WHEN nr.user_id IS NOT NULL THEN true
+				ELSE false
+			END AS is_read,
+			n.created_at
+		FROM notifications n
+		LEFT JOIN notification_reads nr
+			ON nr.notification_id = n.id AND nr.user_id = $1
+		WHERE n.user_id = $1 OR n.user_id IS NULL
+		ORDER BY n.created_at DESC
 		LIMIT $2 OFFSET $3
 	`, userID, limit, offset)
 	if err != nil {
@@ -89,49 +98,92 @@ func (r *NotificationRepo) ListForUser(ctx context.Context, userID int64, limit,
 	}
 	defer rows.Close()
 
-	return scanNotificationRows(rows)
+	return scanNotificationRowsCompat(rows)
 }
 
-// CountUnreadForUser counts unread notifications the user can see.
 func (r *NotificationRepo) CountUnreadForUser(ctx context.Context, userID int64) (int, error) {
 	var n int
 	err := r.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM notifications
-		WHERE (user_id = $1 OR user_id IS NULL) AND is_read = false
+		SELECT COUNT(*)
+		FROM notifications n
+		LEFT JOIN notification_reads nr
+			ON nr.notification_id = n.id AND nr.user_id = $1
+		WHERE (n.user_id = $1 OR n.user_id IS NULL)
+		  AND (
+			(n.user_id = $1 AND n.is_read = false)
+			OR
+			(n.user_id IS NULL AND nr.user_id IS NULL)
+		  )
 	`, userID).Scan(&n)
 	return n, err
 }
 
-// MarkRead marks a single notification as read if the user can see it.
+// MarkRead marks one notification as read for a specific user.
 func (r *NotificationRepo) MarkRead(ctx context.Context, id, userID int64) error {
-	res, err := r.db.ExecContext(ctx, `
-		UPDATE notifications SET is_read = true
-		WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)
-	`, id, userID)
+	// Own notification: flip its own is_read column.
+	// Broadcast: insert into notification_reads.
+	var ownerID sql.NullInt64
+	err := r.db.QueryRowContext(ctx, `SELECT user_id FROM notifications WHERE id = $1`, id).Scan(&ownerID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+
+	if !ownerID.Valid {
+		_, err = r.db.ExecContext(ctx, `
+			INSERT INTO notification_reads (notification_id, user_id)
+			VALUES ($1, $2)
+			ON CONFLICT (notification_id, user_id) DO NOTHING
+		`, id, userID)
+		if err != nil {
+			return dberr.Translate(fmt.Errorf("mark broadcast read: %w", err))
+		}
+		return nil
+	}
+
+	if ownerID.Int64 != userID {
+		return domain.ErrNotFound
+	}
+
+	_, err = r.db.ExecContext(ctx, `
+		UPDATE notifications SET is_read = true WHERE id = $1
+	`, id)
 	if err != nil {
 		return dberr.Translate(fmt.Errorf("mark notification read: %w", err))
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		return domain.ErrNotFound
 	}
 	return nil
 }
 
-// MarkAllRead marks all of the user's own + broadcast notifications as read.
+// MarkAllRead marks every notification the user can see as read.
 func (r *NotificationRepo) MarkAllRead(ctx context.Context, userID int64) (int, error) {
-	// Broadcast rows are shared. Marking a broadcast as read affects every user.
-	// To avoid that, we only mark the user's own notifications.
-	// A cleaner design would use a join table, but for now, only per-user rows.
-	res, err := r.db.ExecContext(ctx, `
+	// 1. Flip is_read on the user's own unread notifications.
+	ownRes, err := r.db.ExecContext(ctx, `
 		UPDATE notifications SET is_read = true
 		WHERE user_id = $1 AND is_read = false
 	`, userID)
 	if err != nil {
-		return 0, dberr.Translate(fmt.Errorf("mark all read: %w", err))
+		return 0, dberr.Translate(fmt.Errorf("mark own read: %w", err))
 	}
-	n, _ := res.RowsAffected()
-	return int(n), nil
+	ownCount, _ := ownRes.RowsAffected()
+
+	// 2. Insert notification_reads for every visible broadcast they haven't read.
+	readRes, err := r.db.ExecContext(ctx, `
+		INSERT INTO notification_reads (notification_id, user_id)
+		SELECT n.id, $1
+		FROM notifications n
+		LEFT JOIN notification_reads nr
+			ON nr.notification_id = n.id AND nr.user_id = $1
+		WHERE n.user_id IS NULL AND nr.user_id IS NULL
+		ON CONFLICT (notification_id, user_id) DO NOTHING
+	`, userID)
+	if err != nil {
+		return 0, dberr.Translate(fmt.Errorf("mark broadcasts read: %w", err))
+	}
+	broadcastCount, _ := readRes.RowsAffected()
+
+	return int(ownCount + broadcastCount), nil
 }
 
 func (r *NotificationRepo) AdminList(ctx context.Context, f repository.AdminListFilter) ([]*domain.Notification, error) {
@@ -150,7 +202,7 @@ func (r *NotificationRepo) AdminList(ctx context.Context, f repository.AdminList
 		i++
 	}
 
-	query := `SELECT ` + notificationColumns + ` FROM notifications`
+	query := `SELECT id, user_id, type, title, message, link, is_read, created_at FROM notifications`
 	if len(where) > 0 {
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
@@ -174,40 +226,53 @@ func (r *NotificationRepo) AdminList(ctx context.Context, f repository.AdminList
 		return nil, fmt.Errorf("admin list notifications: %w", err)
 	}
 	defer rows.Close()
-	return scanNotificationRows(rows)
+	return scanNotificationRowsCompat(rows)
 }
 
-// CountSentBroadcast returns total broadcasts sent (user_id IS NULL).
-func (r *NotificationRepo) CountSentBroadcast(ctx context.Context) (int, error) {
+func (r *NotificationRepo) ListBroadcasts(ctx context.Context, limit, offset int) ([]*domain.Notification, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, user_id, type, title, message, link, is_read, created_at
+		FROM notifications
+		WHERE user_id IS NULL
+		ORDER BY created_at DESC
+		LIMIT $1 OFFSET $2
+	`, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list broadcasts: %w", err)
+	}
+	defer rows.Close()
+	return scanNotificationRowsCompat(rows)
+}
+
+func (r *NotificationRepo) CountBroadcasts(ctx context.Context) (int, error) {
 	var n int
 	err := r.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM notifications WHERE user_id IS NULL`).Scan(&n)
 	return n, err
 }
 
-// Scanner helpers
+// Scanners
 
 type notificationScanner interface {
 	Scan(dest ...any) error
 }
 
-func scanNotification(row *sql.Row) (*domain.Notification, error) {
-	n, err := scanNotificationRow(row)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, domain.ErrNotFound
-	}
-	return n, err
-}
-
-func scanNotificationRow(s notificationScanner) (*domain.Notification, error) {
+func scanNotificationSingle(s notificationScanner) (*domain.Notification, error) {
 	var (
 		n      domain.Notification
 		userID sql.NullInt64
 		link   sql.NullString
+		isRead bool
 	)
 	if err := s.Scan(
-		&n.ID, &userID, &n.Type, &n.Title, &n.Message, &link, &n.IsRead, &n.CreatedAt,
+		&n.ID, &userID, &n.Type, &n.Title, &n.Message, &link, &isRead, &n.CreatedAt,
 	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	if userID.Valid {
@@ -216,19 +281,32 @@ func scanNotificationRow(s notificationScanner) (*domain.Notification, error) {
 	if link.Valid {
 		n.Link = &link.String
 	}
+	n.IsRead = isRead
 	return &n, nil
 }
 
-func scanNotificationRows(rows *sql.Rows) ([]*domain.Notification, error) {
+func scanNotificationRowsCompat(rows *sql.Rows) ([]*domain.Notification, error) {
 	out := make([]*domain.Notification, 0, 16)
 	for rows.Next() {
-		n, err := scanNotificationRow(rows)
-		if err != nil {
+		var (
+			n      domain.Notification
+			userID sql.NullInt64
+			link   sql.NullString
+			isRead bool
+		)
+		if err := rows.Scan(
+			&n.ID, &userID, &n.Type, &n.Title, &n.Message, &link, &isRead, &n.CreatedAt,
+		); err != nil {
 			return nil, err
 		}
-		out = append(out, n)
+		if userID.Valid {
+			n.UserID = &userID.Int64
+		}
+		if link.Valid {
+			n.Link = &link.String
+		}
+		n.IsRead = isRead
+		out = append(out, &n)
 	}
 	return out, rows.Err()
 }
-
-var _ = time.Now

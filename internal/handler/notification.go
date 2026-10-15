@@ -118,4 +118,26 @@ func (h *NotificationHandler) Broadcast(w http.ResponseWriter, r *http.Request) 
 	httputil.JSON(w, http.StatusCreated, dto.BroadcastResponse{Sent: count})
 }
 
+func (h *NotificationHandler) ListBroadcasts(w http.ResponseWriter, r *http.Request) {
+	actor, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 || perPage > 100 {
+		perPage = 50
+	}
+
+	items, err := h.svc.ListBroadcasts(r.Context(), actor, perPage, (page-1)*perPage)
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+	httputil.JSON(w, http.StatusOK, dto.NotificationsFromDomain(items))
+}
+
 var _ = domain.NotificationTypeSystem

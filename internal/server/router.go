@@ -208,6 +208,11 @@ func NewRouter(deps RouterDeps) http.Handler {
 					r.Get("/recent-payments", deps.AdminHandler.RecentPayments)
 				}
 
+				if deps.NotificationHandler != nil {
+					r.Post("/notifications/broadcast", deps.NotificationHandler.Broadcast)
+					r.Get("/notifications", deps.NotificationHandler.ListBroadcasts)
+				}
+
 				if deps.AdminUserHandler != nil {
 					r.Get("/users/{id}/attempts", deps.AdminUserHandler.QuizAttempts)
 					r.Get("/users/{id}/submissions", deps.AdminUserHandler.HomeworkSubmissions)
