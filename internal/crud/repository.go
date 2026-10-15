@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Hisaalu/rogele/internal/dberr"
 	"github.com/Hisaalu/rogele/internal/domain"
 )
 
@@ -128,7 +129,7 @@ func (r *Repository) Create(ctx context.Context, res *Resource, data map[string]
 	row := r.db.QueryRowContext(ctx, query, args...)
 	result, err := scanRow(row, allCols)
 	if err != nil {
-		return nil, fmt.Errorf("create %s: %w", res.Table, err)
+		return nil, dberr.Translate(fmt.Errorf("create %s: %w", res.Table, err))
 	}
 	return result, nil
 }
@@ -167,7 +168,7 @@ func (r *Repository) Update(ctx context.Context, res *Resource, id any, data map
 		return nil, domain.ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("update %s: %w", res.Table, err)
+		return nil, dberr.Translate(fmt.Errorf("update %s: %w", res.Table, err))
 	}
 	return result, nil
 }
@@ -176,7 +177,7 @@ func (r *Repository) Delete(ctx context.Context, res *Resource, id any) error {
 	query := fmt.Sprintf("DELETE FROM %s WHERE %s = $1", res.Table, res.PrimaryKey)
 	result, err := r.db.ExecContext(ctx, query, id)
 	if err != nil {
-		return fmt.Errorf("delete %s: %w", res.Table, err)
+		return dberr.Translate(fmt.Errorf("delete %s: %w", res.Table, err))
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {

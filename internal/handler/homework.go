@@ -250,3 +250,139 @@ func (h *HomeworkHandler) actor(w http.ResponseWriter, r *http.Request) (service
 		Role:   claims.Role,
 	}, true
 }
+
+func (h *HomeworkHandler) ListAttachments(w http.ResponseWriter, r *http.Request) {
+	actor, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "id must be an integer")
+		return
+	}
+	items, err := h.svc.ListAttachments(r.Context(), id, actor)
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+	httputil.JSON(w, http.StatusOK, dto.HomeworkAttachmentsFromDomain(items))
+}
+
+func (h *HomeworkHandler) AddAttachment(w http.ResponseWriter, r *http.Request) {
+	actor, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "id must be an integer")
+		return
+	}
+	var req dto.CreateHomeworkAttachmentRequest
+	if err := httputil.DecodeJSON(r, &req); err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+	a, err := h.svc.AddAttachment(r.Context(), id, actor, &domain.HomeworkAttachment{
+		FileName: req.FileName,
+		FilePath: req.FilePath,
+		FileType: req.FileType,
+		FileSize: req.FileSize,
+	})
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+	httputil.JSON(w, http.StatusCreated, dto.HomeworkAttachmentFromDomain(a))
+}
+
+func (h *HomeworkHandler) DeleteAttachment(w http.ResponseWriter, r *http.Request) {
+	actor, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	hwID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "homework id must be an integer")
+		return
+	}
+	attachmentID, err := strconv.ParseInt(chi.URLParam(r, "attachmentId"), 10, 64)
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "attachment id must be an integer")
+		return
+	}
+	if err := h.svc.DeleteAttachment(r.Context(), hwID, attachmentID, actor); err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+	httputil.NoContent(w)
+}
+
+func (h *HomeworkHandler) ListSubmissionFiles(w http.ResponseWriter, r *http.Request) {
+	actor, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "submissionId"), 10, 64)
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "submission id must be an integer")
+		return
+	}
+	items, err := h.svc.ListSubmissionFiles(r.Context(), id, actor)
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+	httputil.JSON(w, http.StatusOK, dto.SubmissionFilesFromDomain(items))
+}
+
+func (h *HomeworkHandler) AddSubmissionFile(w http.ResponseWriter, r *http.Request) {
+	actor, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "submissionId"), 10, 64)
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "submission id must be an integer")
+		return
+	}
+	var req dto.CreateSubmissionFileRequest
+	if err := httputil.DecodeJSON(r, &req); err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+	f, err := h.svc.AddSubmissionFile(r.Context(), id, actor, &domain.HomeworkSubmissionFile{
+		FileName: req.FileName,
+		FilePath: req.FilePath,
+		FileType: req.FileType,
+		FileSize: req.FileSize,
+	})
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+	httputil.JSON(w, http.StatusCreated, dto.SubmissionFileFromDomain(f))
+}
+
+func (h *HomeworkHandler) DeleteSubmissionFile(w http.ResponseWriter, r *http.Request) {
+	actor, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	subID, err := strconv.ParseInt(chi.URLParam(r, "submissionId"), 10, 64)
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "submission id must be an integer")
+		return
+	}
+	fileID, err := strconv.ParseInt(chi.URLParam(r, "fileId"), 10, 64)
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "file id must be an integer")
+		return
+	}
+	if err := h.svc.DeleteSubmissionFile(r.Context(), subID, fileID, actor); err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+	httputil.NoContent(w)
+}

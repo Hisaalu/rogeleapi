@@ -59,6 +59,72 @@ type SubmissionResponse struct {
 	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
 }
 
+type CreateHomeworkAttachmentRequest struct {
+	FileName string  `json:"file_name"`
+	FilePath string  `json:"file_path"`
+	FileType *string `json:"file_type,omitempty"`
+	FileSize *int    `json:"file_size,omitempty"`
+}
+
+type CreateSubmissionFileRequest struct {
+	FileName string  `json:"file_name"`
+	FilePath string  `json:"file_path"`
+	FileType *string `json:"file_type,omitempty"`
+	FileSize *int    `json:"file_size,omitempty"`
+}
+
+type HomeworkAttachmentResponse struct {
+	ID         int64     `json:"id"`
+	HomeworkID int64     `json:"homework_id"`
+	FileName   string    `json:"file_name"`
+	FilePath   string    `json:"file_path"`
+	FileType   *string   `json:"file_type,omitempty"`
+	FileSize   *int      `json:"file_size,omitempty"`
+	UploadedAt time.Time `json:"uploaded_at"`
+}
+
+type SubmissionFileResponse struct {
+	ID           int64     `json:"id"`
+	SubmissionID int64     `json:"submission_id"`
+	FileName     string    `json:"file_name"`
+	FilePath     string    `json:"file_path"`
+	FileType     *string   `json:"file_type,omitempty"`
+	FileSize     *int      `json:"file_size,omitempty"`
+	UploadedAt   time.Time `json:"uploaded_at"`
+}
+
+func HomeworkAttachmentFromDomain(a *domain.HomeworkAttachment) HomeworkAttachmentResponse {
+	return HomeworkAttachmentResponse{
+		ID: a.ID, HomeworkID: a.HomeworkID, FileName: a.FileName,
+		FilePath: a.FilePath, FileType: a.FileType, FileSize: a.FileSize,
+		UploadedAt: a.UploadedAt,
+	}
+}
+
+func HomeworkAttachmentsFromDomain(items []*domain.HomeworkAttachment) []HomeworkAttachmentResponse {
+	out := make([]HomeworkAttachmentResponse, 0, len(items))
+	for _, a := range items {
+		out = append(out, HomeworkAttachmentFromDomain(a))
+	}
+	return out
+}
+
+func SubmissionFileFromDomain(f *domain.HomeworkSubmissionFile) SubmissionFileResponse {
+	return SubmissionFileResponse{
+		ID: f.ID, SubmissionID: f.SubmissionID, FileName: f.FileName,
+		FilePath: f.FilePath, FileType: f.FileType, FileSize: f.FileSize,
+		UploadedAt: f.UploadedAt,
+	}
+}
+
+func SubmissionFilesFromDomain(items []*domain.HomeworkSubmissionFile) []SubmissionFileResponse {
+	out := make([]SubmissionFileResponse, 0, len(items))
+	for _, f := range items {
+		out = append(out, SubmissionFileFromDomain(f))
+	}
+	return out
+}
+
 func HomeworkFromDomain(hw *domain.Homework) HomeworkResponse {
 	return HomeworkResponse{
 		ID: hw.ID, TeacherID: hw.TeacherID, ClassID: hw.ClassID, SubjectID: hw.SubjectID,

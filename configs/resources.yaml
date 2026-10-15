@@ -29,6 +29,7 @@ resources:
   - name: classes
     table: classes
     primary_key: id
+    system_columns: [created_at]
     searchable: [name, level]
     filterable: [level, is_active]
     default_sort: [name]
@@ -43,6 +44,7 @@ resources:
   - name: subjects
     table: subjects
     primary_key: id
+    system_columns: [created_at]
     searchable: [name, code, description]
     filterable: [class_id, teacher_id, is_active]
     default_sort: [name]

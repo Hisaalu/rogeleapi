@@ -261,3 +261,83 @@ func canEditHomework(hw *domain.Homework, actor ActorContext) error {
 	}
 	return fmt.Errorf("%w: insufficient role", domain.ErrForbidden)
 }
+
+func (s *HomeworkService) ListAttachments(ctx context.Context, homeworkID int64, actor ActorContext) ([]*domain.HomeworkAttachment, error) {
+	hw, err := s.hw.GetByID(ctx, homeworkID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.canView(ctx, hw, actor); err != nil {
+		return nil, err
+	}
+	return s.hw.ListAttachments(ctx, homeworkID)
+}
+
+func (s *HomeworkService) AddAttachment(ctx context.Context, homeworkID int64, actor ActorContext, a *domain.HomeworkAttachment) (*domain.HomeworkAttachment, error) {
+	hw, err := s.hw.GetByID(ctx, homeworkID)
+	if err != nil {
+		return nil, err
+	}
+	if err := canEditHomework(hw, actor); err != nil {
+		return nil, err
+	}
+	a.HomeworkID = homeworkID
+	return s.hw.CreateAttachment(ctx, a)
+}
+
+func (s *HomeworkService) DeleteAttachment(ctx context.Context, homeworkID, attachmentID int64, actor ActorContext) error {
+	hw, err := s.hw.GetByID(ctx, homeworkID)
+	if err != nil {
+		return err
+	}
+	if err := canEditHomework(hw, actor); err != nil {
+		return err
+	}
+	return s.hw.DeleteAttachment(ctx, attachmentID)
+}
+
+func (s *HomeworkService) ListSubmissionFiles(ctx context.Context, submissionID int64, actor ActorContext) ([]*domain.HomeworkSubmissionFile, error) {
+	sub, err := s.hw.GetSubmissionByID(ctx, submissionID)
+	if err != nil {
+		return nil, err
+	}
+	if actor.Role == domain.RoleLearner && sub.StudentID != actor.UserID {
+		return nil, domain.ErrForbidden
+	}
+	if actor.Role == domain.RoleTeacher {
+		hw, err := s.hw.GetByID(ctx, sub.HomeworkID)
+		if err != nil {
+			return nil, err
+		}
+		if hw.TeacherID != actor.UserID {
+			return nil, domain.ErrForbidden
+		}
+	}
+	return s.hw.ListSubmissionFiles(ctx, submissionID)
+}
+
+func (s *HomeworkService) AddSubmissionFile(ctx context.Context, submissionID int64, actor ActorContext, f *domain.HomeworkSubmissionFile) (*domain.HomeworkSubmissionFile, error) {
+	sub, err := s.hw.GetSubmissionByID(ctx, submissionID)
+	if err != nil {
+		return nil, err
+	}
+	if sub.StudentID != actor.UserID {
+		return nil, domain.ErrForbidden
+	}
+	if sub.Status == domain.HomeworkStatusGraded {
+		return nil, fmt.Errorf("%w: submission has been graded", domain.ErrForbidden)
+	}
+	f.SubmissionID = submissionID
+	return s.hw.CreateSubmissionFile(ctx, f)
+}
+
+func (s *HomeworkService) DeleteSubmissionFile(ctx context.Context, submissionID, fileID int64, actor ActorContext) error {
+	sub, err := s.hw.GetSubmissionByID(ctx, submissionID)
+	if err != nil {
+		return err
+	}
+	if sub.StudentID != actor.UserID && actor.Role != domain.RoleAdmin {
+		return domain.ErrForbidden
+	}
+	return s.hw.DeleteSubmissionFile(ctx, fileID)
+}
