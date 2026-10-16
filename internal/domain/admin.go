@@ -58,3 +58,10 @@ type AdminPaymentSummary struct {
 	UserFirstName *string    `json:"user_first_name,omitempty"`
 	UserLastName  *string    `json:"user_last_name,omitempty"`
 }
+
+type ClassLearnerCount struct {
+	ClassID      int64  `json:"class_id"`
+	ClassName    string `json:"class_name"`
+	LearnerCount int    `json:"learner_count"`
+	Capacity     *int   `json:"capacity,omitempty"`
+}

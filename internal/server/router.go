@@ -202,6 +202,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 		if deps.AdminHandler != nil || deps.AdminUserHandler != nil || deps.NotificationHandler != nil {
 			r.Route("/admin", func(r chi.Router) {
 				r.Use(middleware.Authenticate(deps.Tokens))
+				r.Get("/learners-by-class", deps.AdminHandler.LearnersByClass)
 
 				if deps.AdminHandler != nil {
 					r.Get("/stats", deps.AdminHandler.Overview)

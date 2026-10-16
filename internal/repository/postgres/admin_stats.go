@@ -134,7 +134,7 @@ func (r *AdminStatsRepo) GetOverview(ctx context.Context) (*domain.AdminOverview
 }
 
 func (r *AdminStatsRepo) ListRecentActivity(ctx context.Context, limit int) ([]*domain.AdminActivityItem, error) {
-	if limit <= 0 || limit > 100 {
+	if limit <= 0 || limit > 500 {
 		limit = 20
 	}
 
@@ -314,6 +314,37 @@ func (r *AdminStatsRepo) ListRecentPayments(ctx context.Context, limit int) ([]*
 			p.UserLastName = &lastName.String
 		}
 		out = append(out, &p)
+	}
+	return out, rows.Err()
+}
+
+func (r *AdminStatsRepo) LearnersByClass(ctx context.Context) ([]*domain.ClassLearnerCount, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT
+			c.id,
+			c.name,
+			COUNT(u.id) FILTER (
+				WHERE u.role IN ('learner','external')
+				  AND u.is_active = true
+				  AND u.is_suspended = false
+			)::int AS learner_count
+		FROM classes c
+		LEFT JOIN users u ON u.class_id = c.id
+		GROUP BY c.id, c.name
+		ORDER BY c.name
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("learners by class: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]*domain.ClassLearnerCount, 0)
+	for rows.Next() {
+		var item domain.ClassLearnerCount
+		if err := rows.Scan(&item.ClassID, &item.ClassName, &item.LearnerCount); err != nil {
+			return nil, err
+		}
+		out = append(out, &item)
 	}
 	return out, rows.Err()
 }

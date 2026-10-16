@@ -139,3 +139,21 @@ func RecentPaymentsFromDomain(items []*domain.AdminPaymentSummary) []RecentPayme
 	}
 	return out
 }
+
+type ClassLearnerCountResponse struct {
+	ClassID      int64  `json:"class_id"`
+	ClassName    string `json:"class_name"`
+	LearnerCount int    `json:"learner_count"`
+}
+
+func ClassLearnerCountsFromDomain(items []*domain.ClassLearnerCount) []ClassLearnerCountResponse {
+	out := make([]ClassLearnerCountResponse, 0, len(items))
+	for _, i := range items {
+		out = append(out, ClassLearnerCountResponse{
+			ClassID:      i.ClassID,
+			ClassName:    i.ClassName,
+			LearnerCount: i.LearnerCount,
+		})
+	}
+	return out
+}

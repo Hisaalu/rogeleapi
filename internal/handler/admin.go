@@ -84,3 +84,15 @@ func (h *AdminHandler) RecentPayments(w http.ResponseWriter, r *http.Request) {
 	}
 	httputil.JSON(w, http.StatusOK, dto.RecentPaymentsFromDomain(items))
 }
+
+func (h *AdminHandler) LearnersByClass(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAdmin(w, r) {
+		return
+	}
+	items, err := h.repo.LearnersByClass(r.Context())
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+	httputil.JSON(w, http.StatusOK, dto.ClassLearnerCountsFromDomain(items))
+}
