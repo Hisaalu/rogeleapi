@@ -151,3 +151,15 @@ func (h *AnalyticsHandler) SignupDates(w http.ResponseWriter, r *http.Request) {
 	}
 	httputil.JSON(w, http.StatusOK, out)
 }
+
+func (h *AnalyticsHandler) LearnerSignals(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAdmin(w, r) {
+		return
+	}
+	out, err := h.svc.LearnerSignals(r.Context())
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+	httputil.JSON(w, http.StatusOK, out)
+}

@@ -251,3 +251,153 @@ func (r *AnalyticsRepo) SignupDates(ctx context.Context) ([]*domain.SignupDate, 
 	}
 	return out, rows.Err()
 }
+
+func (r *AnalyticsRepo) LearnerSignals(ctx context.Context) ([]*domain.LearnerSignal, error) {
+	query := `
+		WITH quiz_stats AS (
+			SELECT
+				user_id,
+				COUNT(*)::int AS attempts,
+				AVG(score)::float8 AS avg_score
+			FROM quiz_attempts
+			WHERE status = 'completed' AND score IS NOT NULL
+			GROUP BY user_id
+		),
+		homework_stats AS (
+			SELECT
+				student_id,
+				COUNT(*) FILTER (WHERE status IN ('submitted','graded','late'))::int AS submitted,
+				COUNT(*) FILTER (WHERE status = 'graded')::int AS graded,
+				AVG(grade) FILTER (WHERE grade IS NOT NULL)::float8 AS avg_grade
+			FROM homework_submissions
+			GROUP BY student_id
+		),
+		assignment_counts AS (
+			SELECT
+				u.id AS user_id,
+				COUNT(h.id)::int AS active_assignments
+			FROM users u
+			LEFT JOIN homework h ON h.class_id = u.class_id AND h.is_active = true
+			WHERE u.is_active = true
+			  AND u.is_suspended = false
+			  AND u.role IN ('learner', 'external')
+			GROUP BY u.id
+		),
+		missing AS (
+			SELECT
+				u.id AS user_id,
+				COUNT(h.id) FILTER (
+					WHERE NOT EXISTS (
+						SELECT 1 FROM homework_submissions s
+						WHERE s.homework_id = h.id
+						  AND s.student_id = u.id
+						  AND s.status IN ('submitted','graded','late')
+					)
+				)::int AS missing_count
+			FROM users u
+			LEFT JOIN homework h ON h.class_id = u.class_id AND h.is_active = true
+			WHERE u.is_active = true
+			  AND u.is_suspended = false
+			  AND u.role IN ('learner', 'external')
+			GROUP BY u.id
+		),
+		last_activity AS (
+			SELECT user_id, MAX(created_at) AS last_at
+			FROM activity_logs
+			WHERE user_id IS NOT NULL
+			GROUP BY user_id
+		)
+		SELECT
+			u.id,
+			u.email,
+			u.first_name,
+			u.last_name,
+			u.role,
+			u.class_id,
+			c.name,
+			u.last_login,
+			la.last_at,
+			COALESCE(qs.attempts, 0),
+			qs.avg_score,
+			COALESCE(hs.submitted, 0),
+			COALESCE(hs.graded, 0),
+			hs.avg_grade,
+			COALESCE(ac.active_assignments, 0),
+			COALESCE(m.missing_count, 0)
+		FROM users u
+		LEFT JOIN classes c ON c.id = u.class_id
+		LEFT JOIN quiz_stats qs ON qs.user_id = u.id
+		LEFT JOIN homework_stats hs ON hs.student_id = u.id
+		LEFT JOIN assignment_counts ac ON ac.user_id = u.id
+		LEFT JOIN missing m ON m.user_id = u.id
+		LEFT JOIN last_activity la ON la.user_id = u.id
+		WHERE u.is_active = true
+		  AND u.is_suspended = false
+		  AND u.role IN ('learner', 'external')
+		ORDER BY u.id
+	`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("learner signals: %w", err)
+	}
+	defer rows.Close()
+
+	now := time.Now().UTC()
+	out := make([]*domain.LearnerSignal, 0)
+
+	for rows.Next() {
+		var (
+			s            domain.LearnerSignal
+			firstName    sql.NullString
+			lastName     sql.NullString
+			classID      sql.NullInt64
+			className    sql.NullString
+			lastLogin    sql.NullTime
+			lastActivity sql.NullTime
+			quizAvg      sql.NullFloat64
+			hwAvg        sql.NullFloat64
+		)
+
+		if err := rows.Scan(
+			&s.UserID, &s.Email, &firstName, &lastName, &s.Role,
+			&classID, &className, &lastLogin, &lastActivity,
+			&s.QuizAttempts, &quizAvg,
+			&s.HomeworkSubmitted, &s.HomeworkGraded, &hwAvg,
+			&s.ActiveAssignmentsForUser, &s.MissingAssignments,
+		); err != nil {
+			return nil, err
+		}
+
+		if firstName.Valid {
+			s.FirstName = &firstName.String
+		}
+		if lastName.Valid {
+			s.LastName = &lastName.String
+		}
+		if classID.Valid {
+			s.ClassID = &classID.Int64
+		}
+		if className.Valid {
+			s.ClassName = &className.String
+		}
+		if lastLogin.Valid {
+			s.LastLogin = &lastLogin.Time
+		}
+		if lastActivity.Valid {
+			s.LastActivity = &lastActivity.Time
+			days := int(now.Sub(lastActivity.Time).Hours() / 24)
+			s.DaysSinceLastActivity = &days
+		}
+		if quizAvg.Valid {
+			s.QuizAverage = &quizAvg.Float64
+		}
+		if hwAvg.Valid {
+			s.HomeworkAverageGrade = &hwAvg.Float64
+		}
+
+		out = append(out, &s)
+	}
+
+	return out, rows.Err()
+}

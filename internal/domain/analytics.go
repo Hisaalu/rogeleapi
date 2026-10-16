@@ -60,3 +60,23 @@ type SignupDate struct {
 	CreatedAt time.Time  `json:"created_at"`
 	LastLogin *time.Time `json:"last_login,omitempty"`
 }
+
+type LearnerSignal struct {
+	UserID                   int64      `json:"user_id"`
+	Email                    string     `json:"email"`
+	FirstName                *string    `json:"first_name,omitempty"`
+	LastName                 *string    `json:"last_name,omitempty"`
+	Role                     string     `json:"role"`
+	ClassID                  *int64     `json:"class_id,omitempty"`
+	ClassName                *string    `json:"class_name,omitempty"`
+	LastLogin                *time.Time `json:"last_login,omitempty"`
+	LastActivity             *time.Time `json:"last_activity,omitempty"`
+	DaysSinceLastActivity    *int       `json:"days_since_last_activity,omitempty"`
+	QuizAttempts             int        `json:"quiz_attempts"`
+	QuizAverage              *float64   `json:"quiz_average,omitempty"`
+	HomeworkSubmitted        int        `json:"homework_submitted"`
+	HomeworkGraded           int        `json:"homework_graded"`
+	HomeworkAverageGrade     *float64   `json:"homework_average_grade,omitempty"`
+	ActiveAssignmentsForUser int        `json:"active_assignments"`
+	MissingAssignments       int        `json:"missing_assignments"`
+}

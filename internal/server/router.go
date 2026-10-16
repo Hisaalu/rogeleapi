@@ -240,6 +240,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 				r.Get("/score-distribution", deps.AnalyticsHandler.ScoreDistribution)
 				r.Get("/user-events", deps.AnalyticsHandler.UserEvents)
 				r.Get("/signup-dates", deps.AnalyticsHandler.SignupDates)
+				r.Get("/learner-signals", deps.AnalyticsHandler.LearnerSignals)
 			})
 		}
 

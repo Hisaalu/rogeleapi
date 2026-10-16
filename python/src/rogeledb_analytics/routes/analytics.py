@@ -299,3 +299,180 @@ async def activity_heatmap(
                 max_value = c
 
     return {"grid": grid, "max": max_value, "total": total}
+
+@router.get("/at-risk-learners")
+async def at_risk_learners(
+    min_score: int = Query(3, ge=0, le=20),
+    limit: int = Query(50, ge=1, le=200),
+) -> dict:
+    """Rank learners by risk signals.
+
+    Each learner gets a score based on weighted factors:
+
+    - No activity in 14+ days (3), 7-13 days (2), 3-6 days (1)
+    - Quiz average below 50% (2), 50-65% (1)
+    - Missing 3+ assignments (3), 1-2 assignments (1)
+    - Homework average below 50% (2), 50-65% (1)
+
+    Band assignment:
+    - score 0-2: healthy
+    - score 3-5: watch
+    - score 6+:  at risk
+    """
+    try:
+        signals = await go_client.get("/analytics/learner-signals")
+    except GoAPIError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    if not isinstance(signals, list) or not signals:
+        return {"learners": [], "summary": {"at_risk": 0, "watch": 0, "healthy": 0, "total": 0}}
+
+    learners: list[dict] = []
+    at_risk = watch = healthy = 0
+
+    for sig in signals:
+        score = 0
+        reasons: list[str] = []
+
+        days = sig.get("days_since_last_activity")
+        if days is None:
+            score += 3
+            reasons.append("No recorded activity")
+        elif days >= 14:
+            score += 3
+            reasons.append(f"No activity in {days} days")
+        elif days >= 7:
+            score += 2
+            reasons.append(f"No activity in {days} days")
+        elif days >= 3:
+            score += 1
+            reasons.append(f"No activity in {days} days")
+
+        attempts = sig.get("quiz_attempts", 0)
+        quiz_avg = sig.get("quiz_average")
+        if attempts > 0 and quiz_avg is not None:
+            if quiz_avg < 50:
+                score += 2
+                reasons.append(f"Quiz average {quiz_avg:.0f}%")
+            elif quiz_avg < 65:
+                score += 1
+                reasons.append(f"Quiz average {quiz_avg:.0f}%")
+
+        missing = sig.get("missing_assignments", 0)
+        if missing >= 3:
+            score += 3
+            reasons.append(f"{missing} missing assignments")
+        elif missing >= 1:
+            score += 1
+            reasons.append(f"{missing} missing assignment{'s' if missing > 1 else ''}")
+
+        graded = sig.get("homework_graded", 0)
+        hw_avg = sig.get("homework_average_grade")
+        if graded > 0 and hw_avg is not None:
+            if hw_avg < 50:
+                score += 2
+                reasons.append(f"Homework average {hw_avg:.0f}%")
+            elif hw_avg < 65:
+                score += 1
+                reasons.append(f"Homework average {hw_avg:.0f}%")
+
+        if score >= 6:
+            band = "at_risk"
+            at_risk += 1
+        elif score >= 3:
+            band = "watch"
+            watch += 1
+        else:
+            band = "healthy"
+            healthy += 1
+
+        learners.append(
+            {
+                "user_id": sig.get("user_id"),
+                "email": sig.get("email"),
+                "first_name": sig.get("first_name"),
+                "last_name": sig.get("last_name"),
+                "class_id": sig.get("class_id"),
+                "class_name": sig.get("class_name"),
+                "last_activity": sig.get("last_activity"),
+                "days_since_last_activity": days,
+                "quiz_attempts": attempts,
+                "quiz_average": quiz_avg,
+                "homework_submitted": sig.get("homework_submitted", 0),
+                "homework_graded": graded,
+                "homework_average_grade": hw_avg,
+                "missing_assignments": missing,
+                "risk_score": score,
+                "risk_band": band,
+                "reasons": reasons,
+            }
+        )
+
+    learners.sort(key=lambda item: item["risk_score"], reverse=True)
+    learners = [item for item in learners if item["risk_score"] >= min_score][:limit]
+
+    return {
+        "learners": learners,
+        "summary": {
+            "at_risk": at_risk,
+            "watch": watch,
+            "healthy": healthy,
+            "total": len(signals),
+        },
+    }
+
+
+@router.get("/revenue-forecast")
+async def revenue_forecast(
+    months_ahead: int = Query(3, ge=1, le=12),
+) -> dict:
+    """Linear projection of future revenue based on historical monthly totals.
+
+    Uses numpy's polyfit to fit a straight line to the historical monthly
+    revenue points and extrapolates it forward.
+    """
+    try:
+        payload = await go_client.get(
+            "/analytics/revenue-over-time",
+            params={"interval": "month"},
+        )
+    except GoAPIError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    points = payload.get("points") or []
+
+    if len(points) < 2:
+        return {
+            "history": points,
+            "forecast": [],
+            "trend": {"slope": 0, "intercept": 0},
+            "note": "Not enough historical data to forecast. At least two months required.",
+        }
+
+    x = np.arange(len(points), dtype=float)
+    y = np.array([p["amount"] for p in points], dtype=float)
+
+    slope, intercept = np.polyfit(x, y, 1)
+
+    forecast = []
+    last_period = pd.Timestamp(points[-1]["period"]).to_pydatetime()
+
+    for i in range(1, months_ahead + 1):
+        next_period = last_period + pd.DateOffset(months=i)
+        projected = slope * (len(points) - 1 + i) + intercept
+        projected = max(projected, 0)
+        forecast.append(
+            {
+                "period": next_period.isoformat(),
+                "amount": round(float(projected), 2),
+            }
+        )
+
+    return {
+        "history": points,
+        "forecast": forecast,
+        "trend": {
+            "slope": round(float(slope), 2),
+            "intercept": round(float(intercept), 2),
+        },
+    }

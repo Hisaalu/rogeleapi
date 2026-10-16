@@ -111,3 +111,7 @@ func (s *AnalyticsService) UserEvents(
 func (s *AnalyticsService) SignupDates(ctx context.Context) ([]*domain.SignupDate, error) {
 	return s.repo.SignupDates(ctx)
 }
+
+func (s *AnalyticsService) LearnerSignals(ctx context.Context) ([]*domain.LearnerSignal, error) {
+	return s.repo.LearnerSignals(ctx)
+}
