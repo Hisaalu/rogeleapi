@@ -70,6 +70,7 @@ func run() error {
 	emailRepo := postgres.NewEmailRepo(database)
 	settingsRepo := postgres.NewSettingsRepo(database)
 	adminStatsRepo := postgres.NewAdminStatsRepo(database)
+	analyticsRepo := postgres.NewAnalyticsRepo(database)
 
 	tokenManager := auth.NewTokenManager(
 		cfg.JWT.Secret,
@@ -134,6 +135,7 @@ func run() error {
 	)
 
 	campaignSvc := service.NewCampaignService(emailRepo, mailerSvc, log)
+	analyticsSvc := service.NewAnalyticsService(analyticsRepo)
 
 	crudConfig, err := crud.Load("./configs/resources.yaml")
 	if err != nil {
@@ -167,6 +169,7 @@ func run() error {
 		log,
 	)
 	notificationHandler := handler.NewNotificationHandler(notificationSvc, log)
+	analyticsHandler := handler.NewAnalyticsHandler(analyticsSvc, log)
 
 	router := server.NewRouter(server.RouterDeps{
 		Log:                 log,
@@ -187,6 +190,7 @@ func run() error {
 		AdminHandler:        adminHandler,
 		AdminUserHandler:    adminUserHandler,
 		NotificationHandler: notificationHandler,
+		AnalyticsHandler:    analyticsHandler,
 		CRUDConfig:          crudConfig,
 		CRUDRepo:            crudRepo,
 		UploadHandler:       uploadHandler,

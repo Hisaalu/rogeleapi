@@ -38,6 +38,7 @@ type RouterDeps struct {
 	CRUDConfig          *crud.Config
 	CRUDRepo            *crud.Repository
 	UploadHandler       *handler.UploadHandler
+	AnalyticsHandler    *handler.AnalyticsHandler
 }
 
 func NewRouter(deps RouterDeps) http.Handler {
@@ -223,6 +224,15 @@ func NewRouter(deps RouterDeps) http.Handler {
 				if deps.NotificationHandler != nil {
 					r.Post("/notifications/broadcast", deps.NotificationHandler.Broadcast)
 				}
+			})
+		}
+
+		if deps.AnalyticsHandler != nil {
+			r.Route("/analytics", func(r chi.Router) {
+				r.Use(middleware.Authenticate(deps.Tokens))
+				r.Get("/enrollment-trend", deps.AnalyticsHandler.EnrollmentTrend)
+				r.Get("/revenue-over-time", deps.AnalyticsHandler.RevenueSeries)
+				r.Get("/score-distribution", deps.AnalyticsHandler.ScoreDistribution)
 			})
 		}
 
