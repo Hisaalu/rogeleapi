@@ -1,0 +1,25 @@
+services:
+  analytics:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rogeledb-analytics:dev
+    container_name: rogeledb-analytics
+    ports:
+      - "9000:9000"
+    env_file:
+      - .env
+    environment:
+      - ROGELEDB_API_URL=${ROGELEDB_API_URL:-http://host.docker.internal:8080}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./src
+          target: /app/src
+        - action: rebuild
+          path: ./pyproject.toml
+        - action: rebuild
+          path: ./uv.lock
