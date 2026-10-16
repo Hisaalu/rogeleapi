@@ -77,6 +77,7 @@ func run() error {
 		cfg.JWT.AccessTTL,
 		cfg.JWT.RefreshTTL,
 	)
+	serviceTokenHandler := handler.NewServiceTokenHandler(tokenManager, log)
 
 	var sender mailer.Sender
 	if cfg.Email.Enabled() {
@@ -194,6 +195,7 @@ func run() error {
 		CRUDConfig:          crudConfig,
 		CRUDRepo:            crudRepo,
 		UploadHandler:       uploadHandler,
+		ServiceTokenHandler: serviceTokenHandler,
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.App.Port)

@@ -39,6 +39,7 @@ type RouterDeps struct {
 	CRUDRepo            *crud.Repository
 	UploadHandler       *handler.UploadHandler
 	AnalyticsHandler    *handler.AnalyticsHandler
+	ServiceTokenHandler *handler.ServiceTokenHandler
 }
 
 func NewRouter(deps RouterDeps) http.Handler {
@@ -209,6 +210,10 @@ func NewRouter(deps RouterDeps) http.Handler {
 					r.Get("/recent-payments", deps.AdminHandler.RecentPayments)
 				}
 
+				if deps.ServiceTokenHandler != nil {
+					r.Post("/service-tokens", deps.ServiceTokenHandler.Issue)
+				}
+
 				if deps.NotificationHandler != nil {
 					r.Post("/notifications/broadcast", deps.NotificationHandler.Broadcast)
 					r.Get("/notifications", deps.NotificationHandler.ListBroadcasts)
@@ -233,6 +238,8 @@ func NewRouter(deps RouterDeps) http.Handler {
 				r.Get("/enrollment-trend", deps.AnalyticsHandler.EnrollmentTrend)
 				r.Get("/revenue-over-time", deps.AnalyticsHandler.RevenueSeries)
 				r.Get("/score-distribution", deps.AnalyticsHandler.ScoreDistribution)
+				r.Get("/user-events", deps.AnalyticsHandler.UserEvents)
+				r.Get("/signup-dates", deps.AnalyticsHandler.SignupDates)
 			})
 		}
 

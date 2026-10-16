@@ -99,3 +99,15 @@ func validateInterval(interval string) error {
 		return fmt.Errorf("%w: interval must be day, week, or month", domain.ErrInvalidInput)
 	}
 }
+
+func (s *AnalyticsService) UserEvents(
+	ctx context.Context,
+	r DateRange,
+	limit int,
+) ([]*domain.UserEvent, error) {
+	return s.repo.UserEvents(ctx, r.From, r.To, limit)
+}
+
+func (s *AnalyticsService) SignupDates(ctx context.Context) ([]*domain.SignupDate, error) {
+	return s.repo.SignupDates(ctx)
+}

@@ -93,3 +93,21 @@ func (m *TokenManager) Verify(tokenString string) (*Claims, error) {
 	}
 	return claims, nil
 }
+
+func (m *TokenManager) GenerateService(name string, ttl time.Duration) (string, error) {
+	now := time.Now()
+	claims := Claims{
+		UserID: 0,
+		Email:  "service:" + name,
+		Role:   "admin",
+		Type:   TokenAccess,
+		RegisteredClaims: jwt.RegisteredClaims{
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
+			Issuer:    "rogele",
+			Subject:   "service:" + name,
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(m.secret)
+}

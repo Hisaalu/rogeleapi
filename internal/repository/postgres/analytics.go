@@ -17,8 +17,6 @@ func NewAnalyticsRepo(db *sql.DB) *AnalyticsRepo {
 	return &AnalyticsRepo{db: db}
 }
 
-// EnrollmentTrend returns signup counts bucketed by day, week, or month.
-// `interval` must be one of: day, week, month.
 func (r *AnalyticsRepo) EnrollmentTrend(
 	ctx context.Context,
 	interval string,
@@ -43,7 +41,7 @@ func (r *AnalyticsRepo) EnrollmentTrend(
 	}
 	defer rows.Close()
 
-	var points []*domain.EnrollmentPoint
+	points := make([]*domain.EnrollmentPoint, 0)
 	for rows.Next() {
 		p := &domain.EnrollmentPoint{}
 		if err := rows.Scan(&p.Period, &p.Count); err != nil {
@@ -54,7 +52,6 @@ func (r *AnalyticsRepo) EnrollmentTrend(
 	return points, rows.Err()
 }
 
-// RevenueSeries returns completed payments bucketed by day, week, or month.
 func (r *AnalyticsRepo) RevenueSeries(
 	ctx context.Context,
 	interval string,
@@ -84,7 +81,7 @@ func (r *AnalyticsRepo) RevenueSeries(
 	}
 	defer rows.Close()
 
-	var points []*domain.RevenuePoint
+	points := make([]*domain.RevenuePoint, 0)
 	for rows.Next() {
 		p := &domain.RevenuePoint{}
 		if err := rows.Scan(&p.Period, &p.Amount, &p.Count); err != nil {
@@ -95,7 +92,6 @@ func (r *AnalyticsRepo) RevenueSeries(
 	return points, rows.Err()
 }
 
-// ScoreDistribution buckets completed quiz attempts into five ranges.
 func (r *AnalyticsRepo) ScoreDistribution(ctx context.Context) (*domain.ScoreDistribution, error) {
 	result := &domain.ScoreDistribution{
 		Buckets: []domain.ScoreBucket{
@@ -154,7 +150,6 @@ func (r *AnalyticsRepo) ScoreDistribution(ctx context.Context) (*domain.ScoreDis
 	result.Average = float64(sum) / float64(result.Total)
 	result.Median = median(scores)
 
-	// Passing threshold is hardcoded to 50 for the aggregate view.
 	for _, s := range scores {
 		if s >= 50 {
 			result.PassCount++
@@ -182,7 +177,6 @@ func median(scores []int) int {
 	}
 	sorted := make([]int, len(scores))
 	copy(sorted, scores)
-	// Simple insertion sort — the dataset is small.
 	for i := 1; i < len(sorted); i++ {
 		for j := i; j > 0 && sorted[j] < sorted[j-1]; j-- {
 			sorted[j], sorted[j-1] = sorted[j-1], sorted[j]
@@ -193,4 +187,67 @@ func median(scores []int) int {
 		return sorted[mid]
 	}
 	return (sorted[mid-1] + sorted[mid]) / 2
+}
+
+func (r *AnalyticsRepo) UserEvents(
+	ctx context.Context,
+	from, to time.Time,
+	limit int,
+) ([]*domain.UserEvent, error) {
+	if limit <= 0 || limit > 100_000 {
+		limit = 50_000
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT user_id, action, created_at
+		FROM activity_logs
+		WHERE created_at >= $1
+		  AND created_at <= $2
+		  AND user_id IS NOT NULL
+		ORDER BY created_at ASC
+		LIMIT $3
+	`, from, to, limit)
+	if err != nil {
+		return nil, fmt.Errorf("user events: %w", err)
+	}
+	defer rows.Close()
+
+	events := make([]*domain.UserEvent, 0)
+	for rows.Next() {
+		var e domain.UserEvent
+		if err := rows.Scan(&e.UserID, &e.Action, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		events = append(events, &e)
+	}
+	return events, rows.Err()
+}
+
+func (r *AnalyticsRepo) SignupDates(ctx context.Context) ([]*domain.SignupDate, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, email, role, created_at, last_login
+		FROM users
+		WHERE is_active = true
+		ORDER BY created_at ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("signup dates: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]*domain.SignupDate, 0)
+	for rows.Next() {
+		var (
+			s         domain.SignupDate
+			lastLogin sql.NullTime
+		)
+		if err := rows.Scan(&s.UserID, &s.Email, &s.Role, &s.CreatedAt, &lastLogin); err != nil {
+			return nil, err
+		}
+		if lastLogin.Valid {
+			s.LastLogin = &lastLogin.Time
+		}
+		out = append(out, &s)
+	}
+	return out, rows.Err()
 }

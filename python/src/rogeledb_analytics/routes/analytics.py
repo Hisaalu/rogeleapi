@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from typing import Literal
 
 import numpy as np
+import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 
 from ..go_client import GoAPIError, go_client
@@ -64,7 +65,6 @@ async def enrollment_trend(
     if counts:
         window = 3 if len(counts) >= 3 else len(counts)
         moving = np.convolve(counts, np.ones(window) / window, mode="valid").tolist()
-        # Pad the start so lengths align with `periods`
         padding = [None] * (len(counts) - len(moving))
         moving = padding + moving
     else:
@@ -152,4 +152,150 @@ async def score_distribution() -> dict:
         "pass_count": payload.get("pass_count", 0),
         "fail_count": payload.get("fail_count", 0),
         "passing_pct": payload.get("passing_pct", 0),
+    }
+
+@router.get("/retention")
+async def retention(
+    frm: str | None = Query(None, alias="from"),
+    to: str | None = Query(None),
+    weeks: int = Query(8, ge=1, le=52),
+) -> dict:
+    """Weekly signup cohort retention."""
+    default_from, default_to = _default_dates()
+    from_date = _parse_date(frm, default=default_from)
+    to_date = _parse_date(to, default=default_to)
+
+    try:
+        signups = await go_client.get("/analytics/signup-dates")
+        events = await go_client.get(
+            "/analytics/user-events",
+            params={"from": from_date, "to": to_date, "limit": 50000},
+        )
+    except GoAPIError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    if not isinstance(signups, list) or not signups:
+        return {"cohorts": [], "weeks": weeks}
+
+    signup_df = pd.DataFrame(signups)
+    signup_df["created_at"] = pd.to_datetime(signup_df["created_at"], utc=True)
+    signup_df["cohort_week"] = signup_df["created_at"].dt.to_period("W").dt.start_time
+
+    if not isinstance(events, list) or not events:
+        recent_cohorts = (
+            signup_df["cohort_week"]
+            .dropna()
+            .sort_values(ascending=False)
+            .unique()[:weeks]
+        )
+        cohorts = []
+        for cohort_week in recent_cohorts:
+            cohort_size = int((signup_df["cohort_week"] == cohort_week).sum())
+            row = [
+                {"week": offset, "active": 0, "pct": 0.0}
+                for offset in range(weeks)
+            ]
+            cohorts.append(
+                {
+                    "cohort_week": pd.Timestamp(cohort_week).isoformat(),
+                    "cohort_size": cohort_size,
+                    "weeks": row,
+                }
+            )
+        return {"cohorts": cohorts, "weeks": weeks}
+
+    events_df = pd.DataFrame(events)
+    events_df["created_at"] = pd.to_datetime(events_df["created_at"], utc=True)
+    events_df["event_week"] = events_df["created_at"].dt.to_period("W").dt.start_time
+
+    activity = events_df[["user_id", "event_week"]].drop_duplicates()
+
+    merged = signup_df.merge(activity, on="user_id", how="inner")
+
+    merged["week_offset"] = (
+        (merged["event_week"] - merged["cohort_week"]).dt.days // 7
+    ).astype("Int64")
+
+    merged = merged[merged["week_offset"].between(0, weeks - 1)]
+
+    recent_cohorts = (
+        signup_df["cohort_week"]
+        .dropna()
+        .sort_values(ascending=False)
+        .unique()[:weeks]
+    )
+
+    cohorts = []
+    for cohort_week in recent_cohorts:
+        cohort_size = int((signup_df["cohort_week"] == cohort_week).sum())
+        if cohort_size == 0:
+            continue
+
+        cohort_events = merged[merged["cohort_week"] == cohort_week]
+        row = []
+        for offset in range(weeks):
+            active = int(
+                cohort_events[cohort_events["week_offset"] == offset]["user_id"].nunique()
+            )
+            pct = active / cohort_size
+            row.append({"week": int(offset), "active": active, "pct": round(pct, 4)})
+
+        cohorts.append(
+            {
+                "cohort_week": pd.Timestamp(cohort_week).isoformat(),
+                "cohort_size": cohort_size,
+                "weeks": row,
+            }
+        )
+
+    return {"cohorts": cohorts, "weeks": weeks}
+
+
+@router.get("/activity-heatmap")
+async def activity_heatmap(
+    frm: str | None = Query(None, alias="from"),
+    to: str | None = Query(None),
+) -> dict:
+    """Day-of-week × hour-of-day activity grid.
+
+    Values are event counts. The frontend renders this as a heatmap.
+    """
+    default_from, default_to = _default_dates()
+    from_date = _parse_date(frm, default=default_from)
+    to_date = _parse_date(to, default=default_to)
+
+    try:
+        events = await go_client.get(
+            "/analytics/user-events",
+            params={"from": from_date, "to": to_date, "limit": 50000},
+        )
+    except GoAPIError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    if not isinstance(events, list) or not events:
+        return {
+            "grid": [[0] * 24 for _ in range(7)],
+            "max": 0,
+            "total": 0,
+        }
+
+    df = pd.DataFrame(events)
+    df["created_at"] = pd.to_datetime(df["created_at"], utc=True)
+    df["dow"] = df["created_at"].dt.dayofweek 
+    df["hour"] = df["created_at"].dt.hour
+
+    pivot = df.groupby(["dow", "hour"]).size().unstack(fill_value=0)
+
+    grid: list[list[int]] = []
+    for d in range(7):
+        row = []
+        for h in range(24):
+            row.append(int(pivot.iloc[d][h]) if d in pivot.index and h in pivot.columns else 0)
+        grid.append(row)
+
+    flat = [v for row in grid for v in row]
+    return {
+        "grid": grid,
+        "max": max(flat) if flat else 0,
+        "total": sum(flat),
     }

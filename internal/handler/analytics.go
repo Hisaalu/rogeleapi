@@ -3,6 +3,7 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/Hisaalu/rogele/internal/domain"
@@ -115,4 +116,38 @@ func (h *AnalyticsHandler) ScoreDistribution(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	httputil.JSON(w, http.StatusOK, result)
+}
+
+func (h *AnalyticsHandler) UserEvents(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAdmin(w, r) {
+		return
+	}
+	dr, ok := h.parseRange(w, r)
+	if !ok {
+		return
+	}
+	limit := 50_000
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	events, err := h.svc.UserEvents(r.Context(), dr, limit)
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+	httputil.JSON(w, http.StatusOK, events)
+}
+
+func (h *AnalyticsHandler) SignupDates(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAdmin(w, r) {
+		return
+	}
+	out, err := h.svc.SignupDates(r.Context())
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+	httputil.JSON(w, http.StatusOK, out)
 }

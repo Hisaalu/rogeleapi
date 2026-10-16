@@ -46,3 +46,17 @@ type RevenueSeries struct {
 	Total      float64         `json:"total"`
 	TotalCount int             `json:"total_count"`
 }
+
+type UserEvent struct {
+	UserID    int64     `json:"user_id"`
+	Action    string    `json:"action"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type SignupDate struct {
+	UserID    int64      `json:"user_id"`
+	Email     string     `json:"email"`
+	Role      string     `json:"role"`
+	CreatedAt time.Time  `json:"created_at"`
+	LastLogin *time.Time `json:"last_login,omitempty"`
+}
