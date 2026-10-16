@@ -55,17 +55,20 @@ type QuizService struct {
 	quizzes       repository.QuizRepository
 	users         repository.UserRepository
 	notifications *NotificationService
+	activity      *ActivityService
 }
 
 func NewQuizService(
 	quizzes repository.QuizRepository,
 	users repository.UserRepository,
 	notifications *NotificationService,
+	activity *ActivityService,
 ) *QuizService {
 	return &QuizService{
 		quizzes:       quizzes,
 		users:         users,
 		notifications: notifications,
+		activity:      activity,
 	}
 }
 
@@ -364,6 +367,7 @@ func (s *QuizService) StartAttempt(ctx context.Context, quizID int64, actor Acto
 		Status:    domain.QuizAttemptInProgress,
 		StartedAt: time.Now().UTC(),
 	}
+	s.activity.Log(ctx, actor.UserID, "quiz_attempt", fmt.Sprintf("quiz #%d", quizID))
 	return s.quizzes.CreateAttempt(ctx, attempt)
 }
 

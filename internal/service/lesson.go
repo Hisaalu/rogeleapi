@@ -32,17 +32,20 @@ type LessonService struct {
 	lessons       repository.LessonRepository
 	users         repository.UserRepository
 	notifications *NotificationService
+	activity      *ActivityService
 }
 
 func NewLessonService(
 	lessons repository.LessonRepository,
 	users repository.UserRepository,
 	notifications *NotificationService,
+	activity *ActivityService,
 ) *LessonService {
 	return &LessonService{
 		lessons:       lessons,
 		users:         users,
 		notifications: notifications,
+		activity:      activity,
 	}
 }
 
@@ -75,6 +78,7 @@ func (s *LessonService) GetByID(ctx context.Context, id int64, actor ActorContex
 	}
 	if actor.Role == domain.RoleLearner {
 		_ = s.lessons.IncrementViews(ctx, id)
+		s.activity.Log(ctx, actor.UserID, "lesson_view", l.Title)
 	}
 	return l, nil
 }

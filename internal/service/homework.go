@@ -36,17 +36,20 @@ type HomeworkService struct {
 	hw            repository.HomeworkRepository
 	users         repository.UserRepository
 	notifications *NotificationService
+	activity      *ActivityService
 }
 
 func NewHomeworkService(
 	hw repository.HomeworkRepository,
 	users repository.UserRepository,
 	notifications *NotificationService,
+	activity *ActivityService,
 ) *HomeworkService {
 	return &HomeworkService{
 		hw:            hw,
 		users:         users,
 		notifications: notifications,
+		activity:      activity,
 	}
 }
 
@@ -186,6 +189,7 @@ func (s *HomeworkService) Submit(ctx context.Context, homeworkID int64, actor Ac
 		Status:      status,
 		SubmittedAt: &now,
 	}
+	s.activity.Log(ctx, actor.UserID, "homework_submit", hw.Title)
 	return s.hw.CreateSubmission(ctx, sub)
 }
 

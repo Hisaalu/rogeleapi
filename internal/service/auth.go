@@ -55,6 +55,7 @@ type AuthService struct {
 	users      repository.UserRepository
 	resetRepo  repository.PasswordResetRepository
 	mailer     *mailer.Service
+	activity   *ActivityService
 	webBaseURL string
 	tokens     *auth.TokenManager
 }
@@ -63,6 +64,7 @@ func NewAuthService(
 	users repository.UserRepository,
 	resetRepo repository.PasswordResetRepository,
 	mailerSvc *mailer.Service,
+	activity *ActivityService,
 	webBaseURL string,
 	tokens *auth.TokenManager,
 ) *AuthService {
@@ -70,6 +72,7 @@ func NewAuthService(
 		users:      users,
 		resetRepo:  resetRepo,
 		mailer:     mailerSvc,
+		activity:   activity,
 		webBaseURL: webBaseURL,
 		tokens:     tokens,
 	}
@@ -148,6 +151,7 @@ func (s *AuthService) Login(ctx context.Context, in LoginInput) (*AuthResult, er
 	}
 
 	_ = s.users.UpdateLastLogin(ctx, u.ID)
+	s.activity.Log(ctx, u.ID, "login", "signed in")
 
 	return s.issueTokens(u)
 }

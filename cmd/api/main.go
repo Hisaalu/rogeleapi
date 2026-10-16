@@ -91,6 +91,7 @@ func run() error {
 	brandingProvider := mailer.NewBrandingProvider(database)
 	mailerSvc := mailer.NewService(sender, emailRepo, brandingProvider, log, cfg.App.Name, cfg.Email.WebBaseURL)
 	notificationSvc := service.NewNotificationService(repos.Notification, log)
+	activitySvc := service.NewActivityService(database, log)
 
 	if err := seedEmailTemplates(ctx, emailRepo, log); err != nil {
 		log.Warn("email template seed failed", "error", err)
@@ -111,14 +112,15 @@ func run() error {
 		repos.User,
 		repos.PasswordReset,
 		mailerSvc,
+		activitySvc,
 		cfg.Email.WebBaseURL,
 		tokenManager,
 	)
 	userSvc := service.NewUserService(repos.User)
-	lessonSvc := service.NewLessonService(repos.Lesson, repos.User, notificationSvc)
-	homeworkSvc := service.NewHomeworkService(repos.Homework, repos.User, notificationSvc)
-	quizSvc := service.NewQuizService(repos.Quiz, repos.User, notificationSvc)
 	subSvc := service.NewSubscriptionService(repos.Subscription, planRepo, repos.FreeTrial, repos.User, repos.Payment)
+	lessonSvc := service.NewLessonService(repos.Lesson, repos.User, notificationSvc, activitySvc)
+	homeworkSvc := service.NewHomeworkService(repos.Homework, repos.User, notificationSvc, activitySvc)
+	quizSvc := service.NewQuizService(repos.Quiz, repos.User, notificationSvc, activitySvc)
 
 	providers := payments.NewRegistry(cfg.Momo, cfg.Airtel)
 	log.Info("payment providers", "enabled", providers.Enabled())

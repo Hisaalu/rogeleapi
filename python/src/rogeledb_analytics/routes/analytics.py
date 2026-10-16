@@ -272,30 +272,30 @@ async def activity_heatmap(
     except GoAPIError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
+    # Build the empty grid up front. Every cell is an int.
+    grid: list[list[int]] = [[0] * 24 for _ in range(7)]
+
     if not isinstance(events, list) or not events:
-        return {
-            "grid": [[0] * 24 for _ in range(7)],
-            "max": 0,
-            "total": 0,
-        }
+        return {"grid": grid, "max": 0, "total": 0}
 
     df = pd.DataFrame(events)
     df["created_at"] = pd.to_datetime(df["created_at"], utc=True)
-    df["dow"] = df["created_at"].dt.dayofweek 
+    df["dow"] = df["created_at"].dt.dayofweek  # Monday=0, Sunday=6
     df["hour"] = df["created_at"].dt.hour
 
-    pivot = df.groupby(["dow", "hour"]).size().unstack(fill_value=0)
+    counts = df.groupby(["dow", "hour"]).size()
 
-    grid: list[list[int]] = []
-    for d in range(7):
-        row = []
-        for h in range(24):
-            row.append(int(pivot.iloc[d][h]) if d in pivot.index and h in pivot.columns else 0)
-        grid.append(row)
+    total = 0
+    max_value = 0
 
-    flat = [v for row in grid for v in row]
-    return {
-        "grid": grid,
-        "max": max(flat) if flat else 0,
-        "total": sum(flat),
-    }
+    for (dow, hour), count in counts.items():
+        d = int(dow)
+        h = int(hour)
+        c = int(count)
+        if 0 <= d < 7 and 0 <= h < 24:
+            grid[d][h] = c
+            total += c
+            if c > max_value:
+                max_value = c
+
+    return {"grid": grid, "max": max_value, "total": total}
