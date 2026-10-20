@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"database/sql"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -16,12 +17,21 @@ import (
 )
 
 type LessonHandler struct {
-	svc *service.LessonService
-	log *slog.Logger
+	svc      *service.LessonService
+	enricher *lessonEnricher
+	log      *slog.Logger
 }
 
-func NewLessonHandler(svc *service.LessonService, log *slog.Logger) *LessonHandler {
-	return &LessonHandler{svc: svc, log: log}
+func NewLessonHandler(
+	svc *service.LessonService,
+	db *sql.DB,
+	log *slog.Logger,
+) *LessonHandler {
+	return &LessonHandler{
+		svc:      svc,
+		enricher: newLessonEnricher(db),
+		log:      log,
+	}
 }
 
 func (h *LessonHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -59,6 +69,11 @@ func (h *LessonHandler) List(w http.ResponseWriter, r *http.Request) {
 			filter.ClassID = &id
 		}
 	}
+	if v := r.URL.Query().Get("teacher_id"); v != "" {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			filter.TeacherID = &id
+		}
+	}
 
 	lessons, err := h.svc.List(r.Context(), actor, filter)
 	if err != nil {
@@ -66,7 +81,11 @@ func (h *LessonHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.JSON(w, http.StatusOK, dto.LessonsFromDomain(lessons))
+	out := make([]dto.LessonResponse, 0, len(lessons))
+	for _, l := range lessons {
+		out = append(out, h.enricher.enrich(r.Context(), l, actor.UserID))
+	}
+	httputil.JSON(w, http.StatusOK, out)
 }
 
 func (h *LessonHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +103,7 @@ func (h *LessonHandler) Get(w http.ResponseWriter, r *http.Request) {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
-	httputil.JSON(w, http.StatusOK, dto.LessonFromDomain(l))
+	httputil.JSON(w, http.StatusOK, h.enricher.enrich(r.Context(), l, actor.UserID))
 }
 
 func (h *LessonHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -116,7 +135,7 @@ func (h *LessonHandler) Create(w http.ResponseWriter, r *http.Request) {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
-	httputil.JSON(w, http.StatusCreated, dto.LessonFromDomain(l))
+	httputil.JSON(w, http.StatusCreated, h.enricher.enrich(r.Context(), l, actor.UserID))
 }
 
 func (h *LessonHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -149,7 +168,7 @@ func (h *LessonHandler) Update(w http.ResponseWriter, r *http.Request) {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
-	httputil.JSON(w, http.StatusOK, dto.LessonFromDomain(l))
+	httputil.JSON(w, http.StatusOK, h.enricher.enrich(r.Context(), l, actor.UserID))
 }
 
 func (h *LessonHandler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -189,7 +208,7 @@ func (h *LessonHandler) Publish(w http.ResponseWriter, r *http.Request) {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
-	httputil.JSON(w, http.StatusOK, dto.LessonFromDomain(l))
+	httputil.JSON(w, http.StatusOK, h.enricher.enrich(r.Context(), l, actor.UserID))
 }
 
 func (h *LessonHandler) Approve(w http.ResponseWriter, r *http.Request) {
@@ -212,7 +231,7 @@ func (h *LessonHandler) Approve(w http.ResponseWriter, r *http.Request) {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
-	httputil.JSON(w, http.StatusOK, dto.LessonFromDomain(l))
+	httputil.JSON(w, http.StatusOK, h.enricher.enrich(r.Context(), l, actor.UserID))
 }
 
 func (h *LessonHandler) ToggleBookmark(w http.ResponseWriter, r *http.Request) {
@@ -243,7 +262,11 @@ func (h *LessonHandler) ListBookmarks(w http.ResponseWriter, r *http.Request) {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
-	httputil.JSON(w, http.StatusOK, dto.LessonsFromDomain(lessons))
+	out := make([]dto.LessonResponse, 0, len(lessons))
+	for _, l := range lessons {
+		out = append(out, h.enricher.enrich(r.Context(), l, actor.UserID))
+	}
+	httputil.JSON(w, http.StatusOK, out)
 }
 
 func (h *LessonHandler) ListMaterials(w http.ResponseWriter, r *http.Request) {

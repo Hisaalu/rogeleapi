@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Hisaalu/rogele/internal/domain"
 	"github.com/Hisaalu/rogele/internal/repository"
@@ -270,6 +271,42 @@ func (s *LessonService) DeleteMaterial(ctx context.Context, materialID int64, ac
 		return fmt.Errorf("%w: only admins can delete materials directly", domain.ErrForbidden)
 	}
 	return s.lessons.DeleteMaterial(ctx, materialID)
+}
+
+func (s *LessonService) IsBookmarked(ctx context.Context, userID, lessonID int64) (bool, error) {
+	return s.lessons.IsBookmarked(ctx, userID, lessonID)
+}
+
+func (s *LessonService) CountMaterials(ctx context.Context, lessonID int64) (int, error) {
+	ms, err := s.lessons.ListMaterials(ctx, lessonID)
+	if err != nil {
+		return 0, err
+	}
+	return len(ms), nil
+}
+
+func (s *LessonService) TeacherName(ctx context.Context, teacherID *int64) *string {
+	if teacherID == nil {
+		return nil
+	}
+	u, err := s.users.GetByID(ctx, *teacherID)
+	if err != nil || u == nil {
+		return nil
+	}
+
+	var first, last string
+	if u.FirstName != nil {
+		first = *u.FirstName
+	}
+	if u.LastName != nil {
+		last = *u.LastName
+	}
+
+	name := strings.TrimSpace(first + " " + last)
+	if name == "" {
+		return nil
+	}
+	return &name
 }
 
 func (s *LessonService) learnerClassID(ctx context.Context, actor ActorContext) (*int64, error) {
