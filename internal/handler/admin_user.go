@@ -99,7 +99,7 @@ func (h *AdminUserHandler) HomeworkSubmissions(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	httputil.JSON(w, http.StatusOK, dto.SubmissionsFromDomain(submissions))
+	httputil.JSON(w, http.StatusOK, dto.SubmissionsFromDomain(submissions, nil))
 }
 
 func (h *AdminUserHandler) ForcePasswordReset(w http.ResponseWriter, r *http.Request) {

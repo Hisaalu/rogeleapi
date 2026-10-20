@@ -247,8 +247,31 @@ func (r *HomeworkRepo) GetSubmissionByID(ctx context.Context, id int64) (*domain
 }
 
 func (r *HomeworkRepo) GetSubmission(ctx context.Context, homeworkID, studentID int64) (*domain.HomeworkSubmission, error) {
-	query := `SELECT ` + submissionColumns + ` FROM homework_submissions WHERE homework_id = $1 AND student_id = $2`
-	return scanSubmission(r.db.QueryRowContext(ctx, query, homeworkID, studentID))
+	query := `
+		SELECT id, homework_id, student_id, text_answer, grade, feedback, status, submitted_at
+		FROM homework_submissions
+		WHERE homework_id = $1 AND student_id = $2
+	`
+	var (
+		s           domain.HomeworkSubmission
+		textAnswer  sql.NullString
+		grade       sql.NullFloat64
+		feedback    sql.NullString
+		submittedAt sql.NullTime
+	)
+
+	err := r.db.QueryRowContext(ctx, query, homeworkID, studentID).Scan(
+		&s.ID, &s.HomeworkID, &s.StudentID, &textAnswer, &grade, &feedback, &s.Status, &submittedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+
+	return &s, nil
 }
 
 func (r *HomeworkRepo) ListSubmissions(ctx context.Context, homeworkID int64) ([]*domain.HomeworkSubmission, error) {

@@ -92,7 +92,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 			})
 		})
 
-		homeworkHandler := handler.NewHomeworkHandler(deps.HomeworkSvc, deps.Log)
+		homeworkHandler := handler.NewHomeworkHandler(deps.HomeworkSvc, deps.DB, deps.Log)
 		r.Route("/homework", func(r chi.Router) {
 			r.Use(middleware.Authenticate(deps.Tokens))
 			r.Get("/", homeworkHandler.List)
