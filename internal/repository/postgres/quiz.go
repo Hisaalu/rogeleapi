@@ -116,6 +116,12 @@ func (r *QuizRepo) List(ctx context.Context, f repository.QuizFilter) ([]*domain
 		i++
 	}
 
+	if f.Search != "" {
+		where = append(where, fmt.Sprintf("(title ILIKE $%d OR description ILIKE $%d)", i, i))
+		args = append(args, "%"+f.Search+"%")
+		i++
+	}
+
 	query := `SELECT ` + quizColumns + ` FROM quizzes`
 	if len(where) > 0 {
 		query += " WHERE " + joinAnd(where)
@@ -626,6 +632,23 @@ func (r *QuizRepo) DeleteAllAttempts(ctx context.Context, quizID int64) error {
 		return fmt.Errorf("delete attempts: %w", err)
 	}
 	return nil
+}
+
+func (r *QuizRepo) CountQuestions(ctx context.Context, quizID int64) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quiz_questions WHERE quiz_id = $1`, quizID).Scan(&n)
+	return n, err
+}
+
+func (r *QuizRepo) CountAttemptsForQuiz(ctx context.Context, quizID int64) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quiz_attempts WHERE quiz_id = $1`, quizID).Scan(&n)
+	return n, err
+}
+
+func (r *QuizRepo) GetQuizForUpdate(ctx context.Context, quizID int64) (*domain.Quiz, error) {
+	query := `SELECT ` + quizColumns + ` FROM quizzes WHERE id = $1 FOR UPDATE`
+	return scanQuiz(r.db.QueryRowContext(ctx, query, quizID))
 }
 
 var _ repository.QuizRepository = (*QuizRepo)(nil)

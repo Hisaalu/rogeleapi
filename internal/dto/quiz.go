@@ -53,22 +53,26 @@ type AnswerItem struct {
 }
 
 type QuizResponse struct {
-	ID           int64      `json:"id"`
-	Title        string     `json:"title"`
-	Description  *string    `json:"description,omitempty"`
-	SubjectID    *int64     `json:"subject_id,omitempty"`
-	ClassID      *int64     `json:"class_id,omitempty"`
-	TeacherID    *int64     `json:"teacher_id,omitempty"`
-	TimeLimit    *int       `json:"time_limit,omitempty"`
-	PassingScore int        `json:"passing_score"`
-	MaxAttempts  int        `json:"max_attempts"`
-	IsPublished  bool       `json:"is_published"`
-	IsApproved   bool       `json:"is_approved"`
-	StartDate    *time.Time `json:"start_date,omitempty"`
-	EndDate      *time.Time `json:"end_date,omitempty"`
-	Status       string     `json:"status"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	ID            int64      `json:"id"`
+	Title         string     `json:"title"`
+	Description   *string    `json:"description,omitempty"`
+	SubjectID     *int64     `json:"subject_id,omitempty"`
+	SubjectName   *string    `json:"subject_name,omitempty"`
+	ClassID       *int64     `json:"class_id,omitempty"`
+	ClassName     *string    `json:"class_name,omitempty"`
+	TeacherID     *int64     `json:"teacher_id,omitempty"`
+	TimeLimit     *int       `json:"time_limit,omitempty"`
+	PassingScore  int        `json:"passing_score"`
+	MaxAttempts   int        `json:"max_attempts"`
+	IsPublished   bool       `json:"is_published"`
+	IsApproved    bool       `json:"is_approved"`
+	StartDate     *time.Time `json:"start_date,omitempty"`
+	EndDate       *time.Time `json:"end_date,omitempty"`
+	Status        string     `json:"status"`
+	QuestionCount int        `json:"question_count"`
+	AttemptCount  int        `json:"attempt_count"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 type QuestionResponse struct {
@@ -101,6 +105,27 @@ type AttemptResponse struct {
 	StudentFirstName *string `json:"student_first_name,omitempty"`
 	StudentLastName  *string `json:"student_last_name,omitempty"`
 	StudentRegNo     *string `json:"student_registration_number,omitempty"`
+}
+
+type AttemptResultDetailsResponse struct {
+	ID             int64              `json:"id"`
+	QuizID         *int64             `json:"quiz_id,omitempty"`
+	UserID         *int64             `json:"user_id,omitempty"`
+	Score          *int               `json:"score,omitempty"`
+	TotalQuestions *int               `json:"total_questions,omitempty"`
+	CorrectAnswers *int               `json:"correct_answers,omitempty"`
+	TimeTaken      *int               `json:"time_taken,omitempty"`
+	Status         string             `json:"status"`
+	StartedAt      time.Time          `json:"started_at"`
+	CompletedAt    *time.Time         `json:"completed_at,omitempty"`
+	PassingScore   int                `json:"passing_score"`
+	Questions      []QuestionResponse `json:"questions"`
+	UserAnswers    map[string]int     `json:"user_answers"`
+}
+
+type AttemptAnswerResponse struct {
+	QuestionID     int64 `json:"question_id"`
+	SelectedAnswer *int  `json:"selected_answer"`
 }
 
 func QuizFromDomain(q *domain.Quiz) QuizResponse {
@@ -158,4 +183,17 @@ func AttemptsFromDomain(as []*domain.QuizAttempt) []AttemptResponse {
 		out = append(out, AttemptFromDomain(a))
 	}
 	return out
+}
+
+func QuizWithExtras(q *domain.Quiz, className, subjectName *string, qCount, aCount int) QuizResponse {
+	return QuizResponse{
+		ID: q.ID, Title: q.Title, Description: q.Description,
+		SubjectID: q.SubjectID, SubjectName: subjectName,
+		ClassID: q.ClassID, ClassName: className,
+		TeacherID: q.TeacherID, TimeLimit: q.TimeLimit, PassingScore: q.PassingScore,
+		MaxAttempts: q.MaxAttempts, IsPublished: q.IsPublished, IsApproved: q.IsApproved,
+		StartDate: q.StartDate, EndDate: q.EndDate, Status: q.Status,
+		QuestionCount: qCount, AttemptCount: aCount,
+		CreatedAt: q.CreatedAt, UpdatedAt: q.UpdatedAt,
+	}
 }

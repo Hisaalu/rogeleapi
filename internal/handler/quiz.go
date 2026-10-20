@@ -1,6 +1,10 @@
 package handler
 
 import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -17,11 +21,16 @@ import (
 
 type QuizHandler struct {
 	svc *service.QuizService
+	db  *sql.DB
 	log *slog.Logger
 }
 
-func NewQuizHandler(svc *service.QuizService, log *slog.Logger) *QuizHandler {
-	return &QuizHandler{svc: svc, log: log}
+func NewQuizHandler(svc *service.QuizService, db *sql.DB, log *slog.Logger) *QuizHandler {
+	return &QuizHandler{
+		svc: svc,
+		db:  db,
+		log: log,
+	}
 }
 
 func (h *QuizHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -45,6 +54,7 @@ func (h *QuizHandler) List(w http.ResponseWriter, r *http.Request) {
 	f := repository.QuizFilter{
 		Limit:  perPage,
 		Offset: (page - 1) * perPage,
+		Search: r.URL.Query().Get("q"),
 	}
 	if v := r.URL.Query().Get("subject_id"); v != "" {
 		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
@@ -62,7 +72,29 @@ func (h *QuizHandler) List(w http.ResponseWriter, r *http.Request) {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
-	httputil.JSON(w, http.StatusOK, dto.QuizListFromDomain(list))
+
+	out := make([]dto.QuizResponse, 0, len(list))
+	for _, q := range list {
+		var className, subjectName *string
+		if q.ClassID != nil {
+			var name string
+			if err := h.db.QueryRowContext(r.Context(), `SELECT name FROM classes WHERE id = $1`, *q.ClassID).Scan(&name); err == nil {
+				className = &name
+			}
+		}
+		if q.SubjectID != nil {
+			var name string
+			if err := h.db.QueryRowContext(r.Context(), `SELECT name FROM subjects WHERE id = $1`, *q.SubjectID).Scan(&name); err == nil {
+				subjectName = &name
+			}
+		}
+		qCount, _ := h.svc.CountQuestions(r.Context(), q.ID)
+		aCount, _ := h.svc.CountAttemptsForQuiz(r.Context(), q.ID)
+
+		out = append(out, dto.QuizWithExtras(q, className, subjectName, qCount, aCount))
+	}
+
+	httputil.JSON(w, http.StatusOK, out)
 }
 
 func (h *QuizHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -218,20 +250,54 @@ func (h *QuizHandler) AddQuestion(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "id must be an integer")
 		return
 	}
-	var req dto.CreateQuestionRequest
-	if err := httputil.DecodeJSON(r, &req); err != nil {
+
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_BODY", err.Error())
+		return
+	}
+
+	var bulkReq struct {
+		Questions []dto.CreateQuestionRequest `json:"questions"`
+	}
+
+	var singleReq dto.CreateQuestionRequest
+
+	if err := json.Unmarshal(bodyBytes, &bulkReq); err == nil && len(bulkReq.Questions) > 0 {
+		for _, q := range bulkReq.Questions {
+			_, err := h.svc.AddQuestion(r.Context(), id, actor, service.CreateQuestionInput{
+				Question:      q.Question,
+				OptionA:       q.OptionA,
+				OptionB:       q.OptionB,
+				OptionC:       q.OptionC,
+				OptionD:       q.OptionD,
+				CorrectAnswer: q.CorrectAnswer,
+				Points:        q.Points,
+				Explanation:   q.Explanation,
+			})
+			if err != nil {
+				httputil.DomainError(w, err, h.log)
+				return
+			}
+		}
+		httputil.JSON(w, http.StatusCreated, map[string]string{"message": "Questions added successfully"})
+		return
+	}
+
+	if err := json.Unmarshal(bodyBytes, &singleReq); err != nil {
 		httputil.Error(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
 		return
 	}
+
 	q, err := h.svc.AddQuestion(r.Context(), id, actor, service.CreateQuestionInput{
-		Question:      req.Question,
-		OptionA:       req.OptionA,
-		OptionB:       req.OptionB,
-		OptionC:       req.OptionC,
-		OptionD:       req.OptionD,
-		CorrectAnswer: req.CorrectAnswer,
-		Points:        req.Points,
-		Explanation:   req.Explanation,
+		Question:      singleReq.Question,
+		OptionA:       singleReq.OptionA,
+		OptionB:       singleReq.OptionB,
+		OptionC:       singleReq.OptionC,
+		OptionD:       singleReq.OptionD,
+		CorrectAnswer: singleReq.CorrectAnswer,
+		Points:        singleReq.Points,
+		Explanation:   singleReq.Explanation,
 	})
 	if err != nil {
 		httputil.DomainError(w, err, h.log)
@@ -325,6 +391,36 @@ func (h *QuizHandler) GetAttempt(w http.ResponseWriter, r *http.Request) {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
+
+	if attempt.Status == domain.QuizAttemptCompleted && attempt.QuizID != nil {
+		questions, _ := h.svc.ListRawQuestions(r.Context(), *attempt.QuizID)
+		answers, _ := h.svc.ListAttemptAnswers(r.Context(), attempt.ID)
+		quiz, _ := h.svc.GetByID(r.Context(), *attempt.QuizID, actor)
+
+		passingScore := 70
+		if quiz != nil {
+			passingScore = quiz.PassingScore
+		}
+
+		userAnswers := make(map[string]int)
+		for _, a := range answers {
+			if a.SelectedAnswer != nil {
+				userAnswers[fmt.Sprintf("%d", a.QuestionID)] = *a.SelectedAnswer
+			}
+		}
+
+		res := dto.AttemptResultDetailsResponse{
+			ID: attempt.ID, QuizID: attempt.QuizID, UserID: attempt.UserID,
+			Score: attempt.Score, TotalQuestions: attempt.TotalQuestions, CorrectAnswers: attempt.CorrectAnswers,
+			TimeTaken: attempt.TimeTaken, Status: string(attempt.Status), StartedAt: attempt.StartedAt, CompletedAt: attempt.CompletedAt,
+			PassingScore: passingScore,
+			Questions:    dto.QuestionsFromDomain(questions),
+			UserAnswers:  userAnswers,
+		}
+		httputil.JSON(w, http.StatusOK, res)
+		return
+	}
+
 	httputil.JSON(w, http.StatusOK, dto.AttemptFromDomain(attempt))
 }
 
@@ -386,4 +482,43 @@ func (h *QuizHandler) DeleteAllAttempts(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	httputil.NoContent(w)
+}
+
+func (h *QuizHandler) AddBulkQuestions(w http.ResponseWriter, r *http.Request) {
+	actor, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	quizID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "quiz id must be an integer")
+		return
+	}
+
+	var req struct {
+		Questions []dto.CreateQuestionRequest `json:"questions"`
+	}
+	if err := httputil.DecodeJSON(r, &req); err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+
+	for _, q := range req.Questions {
+		_, err := h.svc.AddQuestion(r.Context(), quizID, actor, service.CreateQuestionInput{
+			Question:      q.Question,
+			OptionA:       q.OptionA,
+			OptionB:       q.OptionB,
+			OptionC:       q.OptionC,
+			OptionD:       q.OptionD,
+			CorrectAnswer: q.CorrectAnswer,
+			Points:        q.Points,
+			Explanation:   q.Explanation,
+		})
+		if err != nil {
+			httputil.DomainError(w, err, h.log)
+			return
+		}
+	}
+
+	httputil.JSON(w, http.StatusCreated, map[string]string{"message": "Questions added successfully"})
 }

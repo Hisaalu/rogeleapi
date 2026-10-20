@@ -114,7 +114,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 			})
 		})
 
-		quizHandler := handler.NewQuizHandler(deps.QuizSvc, deps.Log)
+		quizHandler := handler.NewQuizHandler(deps.QuizSvc, deps.DB, deps.Log)
 		r.Route("/quizzes", func(r chi.Router) {
 			r.Use(middleware.Authenticate(deps.Tokens))
 			r.Get("/", quizHandler.List)
@@ -122,6 +122,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Post("/", quizHandler.Create)
 			r.Get("/attempts/{attemptId}", quizHandler.GetAttempt)
 			r.Post("/attempts/{attemptId}/submit", quizHandler.SubmitAttempt)
+			r.Post("/quizzes/{id}/questions/bulk", quizHandler.AddBulkQuestions)
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", quizHandler.Get)
 				r.Patch("/", quizHandler.Update)

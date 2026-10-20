@@ -94,6 +94,7 @@ type QuizFilter struct {
 	ClassID   *int64
 	SubjectID *int64
 	Published *bool
+	Search    string
 	Limit     int
 	Offset    int
 }
@@ -122,6 +123,11 @@ type QuizRepository interface {
 	ListAttemptsWithStudents(ctx context.Context, quizID int64) ([]*domain.QuizAttempt, error)
 
 	DeleteAllAttempts(ctx context.Context, quizID int64) error
+
+	CountQuestions(ctx context.Context, quizID int64) (int, error)
+	CountAttemptsForQuiz(ctx context.Context, quizID int64) (int, error)
+
+	GetQuizForUpdate(ctx context.Context, quizID int64) (*domain.Quiz, error)
 }
 
 type SubscriptionFilter struct {

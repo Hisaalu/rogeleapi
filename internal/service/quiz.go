@@ -182,7 +182,6 @@ func (s *QuizService) Update(ctx context.Context, id int64, actor ActorContext, 
 	if in.Description != nil {
 		q.Description = in.Description
 	}
-	// ... other fields ...
 	if in.IsPublished != nil {
 		q.IsPublished = *in.IsPublished
 		if *in.IsPublished {
@@ -305,6 +304,7 @@ func (s *QuizService) StartAttempt(ctx context.Context, quizID int64, actor Acto
 	if actor.Role != domain.RoleLearner {
 		return nil, fmt.Errorf("%w: only learners can attempt quizzes", domain.ErrForbidden)
 	}
+
 	q, err := s.quizzes.GetByID(ctx, quizID)
 	if err != nil {
 		return nil, err
@@ -343,8 +343,6 @@ func (s *QuizService) StartAttempt(ctx context.Context, quizID int64, actor Acto
 		} else {
 			return existing, nil
 		}
-	} else if err != domain.ErrNotFound {
-		return nil, err
 	}
 
 	if q.MaxAttempts > 0 {
@@ -575,4 +573,20 @@ func (s *QuizService) notifyNewQuiz(ctx context.Context, q *domain.Quiz) {
 	message := q.Title
 
 	_ = s.notifications.NotifyUsers(ctx, ids, domain.NotificationTypeQuiz, title, message, &link)
+}
+
+func (s *QuizService) CountQuestions(ctx context.Context, quizID int64) (int, error) {
+	return s.quizzes.CountQuestions(ctx, quizID)
+}
+
+func (s *QuizService) CountAttemptsForQuiz(ctx context.Context, quizID int64) (int, error) {
+	return s.quizzes.CountAttemptsForQuiz(ctx, quizID)
+}
+
+func (s *QuizService) ListAttemptAnswers(ctx context.Context, attemptID int64) ([]*domain.QuizAttemptAnswer, error) {
+	return s.quizzes.ListAnswers(ctx, attemptID)
+}
+
+func (s *QuizService) ListRawQuestions(ctx context.Context, quizID int64) ([]*domain.QuizQuestion, error) {
+	return s.quizzes.ListQuestions(ctx, quizID)
 }
