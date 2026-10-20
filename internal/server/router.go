@@ -106,6 +106,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 				r.Get("/", homeworkHandler.Get)
 				r.Patch("/", homeworkHandler.Update)
 				r.Delete("/", homeworkHandler.Delete)
+				r.Delete("/homework/submissions/{submissionId}", homeworkHandler.DeleteSubmission)
 				r.Post("/submit", homeworkHandler.Submit)
 				r.Get("/submissions", homeworkHandler.ListSubmissions)
 				r.Get("/attachments", homeworkHandler.ListAttachments)
