@@ -102,11 +102,12 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Get("/submissions/{submissionId}/files", homeworkHandler.ListSubmissionFiles)
 			r.Post("/submissions/{submissionId}/files", homeworkHandler.AddSubmissionFile)
 			r.Delete("/submissions/{submissionId}/files/{fileId}", homeworkHandler.DeleteSubmissionFile)
+			r.Delete("/submissions/{submissionId}", homeworkHandler.DeleteSubmission)
+
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", homeworkHandler.Get)
 				r.Patch("/", homeworkHandler.Update)
 				r.Delete("/", homeworkHandler.Delete)
-				r.Delete("/homework/submissions/{submissionId}", homeworkHandler.DeleteSubmission)
 				r.Post("/submit", homeworkHandler.Submit)
 				r.Get("/submissions", homeworkHandler.ListSubmissions)
 				r.Get("/attachments", homeworkHandler.ListAttachments)

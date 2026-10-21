@@ -377,11 +377,13 @@ func (h *HomeworkHandler) DeleteSubmission(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
+
 	id, err := strconv.ParseInt(chi.URLParam(r, "submissionId"), 10, 64)
 	if err != nil {
 		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "submission id must be an integer")
 		return
 	}
+
 	if err := h.svc.DeleteSubmission(r.Context(), id, actor); err != nil {
 		httputil.DomainError(w, err, h.log)
 		return

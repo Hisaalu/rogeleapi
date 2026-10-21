@@ -70,14 +70,20 @@ func (r *HomeworkRepo) Update(ctx context.Context, hw *domain.Homework) error {
 }
 
 func (r *HomeworkRepo) Delete(ctx context.Context, id int64) error {
-	_, _ = r.db.ExecContext(ctx, `DELETE FROM homework_submission_files WHERE submission_id IN (SELECT id FROM homework_submissions WHERE homework_id = $1)`, id)
+	_, _ = r.db.ExecContext(ctx, `
+		DELETE FROM homework_submission_files 
+		WHERE submission_id IN (SELECT id FROM homework_submissions WHERE homework_id = $1)
+	`, id)
+
 	_, _ = r.db.ExecContext(ctx, `DELETE FROM homework_submissions WHERE homework_id = $1`, id)
+
 	_, _ = r.db.ExecContext(ctx, `DELETE FROM homework_attachments WHERE homework_id = $1`, id)
 
-	res, err := r.db.ExecContext(ctx, `DELETE FROM homeworks WHERE id = $1`, id)
+	res, err := r.db.ExecContext(ctx, `DELETE FROM homework WHERE id = $1`, id)
 	if err != nil {
 		return dberr.Translate(fmt.Errorf("delete homework: %w", err))
 	}
+
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		return domain.ErrNotFound
@@ -338,10 +344,8 @@ func (r *HomeworkRepo) UpdateSubmission(ctx context.Context, s *domain.HomeworkS
 }
 
 func (r *HomeworkRepo) DeleteSubmission(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM homework_submission_files WHERE submission_id = $1`, id)
-	if err != nil {
-		return fmt.Errorf("delete submission files: %w", err)
-	}
+	_, _ = r.db.ExecContext(ctx, `DELETE FROM homework_submission_files WHERE submission_id = $1`, id)
+
 	res, err := r.db.ExecContext(ctx, `DELETE FROM homework_submissions WHERE id = $1`, id)
 	if err != nil {
 		return dberr.Translate(fmt.Errorf("delete submission: %w", err))
