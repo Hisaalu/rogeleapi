@@ -264,4 +264,38 @@ func scanUserRow(s userRowScanner) (*domain.User, error) {
 	return &u, nil
 }
 
+type StudentStats struct {
+	UserID       int64
+	QuizzesTaken int
+	AvgScore     float64
+}
+
+func (r *UserRepo) GetStudentStats(ctx context.Context) (map[int64]repository.StudentStats, error) {
+	query := `
+		SELECT 
+			u.id,
+			COUNT(a.id) as quizzes_taken,
+			COALESCE(AVG(a.score), 0) as avg_score
+		FROM users u
+		LEFT JOIN quiz_attempts a ON u.id = a.user_id AND a.status = 'completed'
+		WHERE u.role IN ('learner', 'external')
+		GROUP BY u.id
+	`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("get student stats: %w", err)
+	}
+	defer rows.Close()
+
+	stats := make(map[int64]repository.StudentStats)
+	for rows.Next() {
+		var s repository.StudentStats
+		if err := rows.Scan(&s.UserID, &s.QuizzesTaken, &s.AvgScore); err != nil {
+			return nil, err
+		}
+		stats[s.UserID] = s
+	}
+	return stats, rows.Err()
+}
+
 var _ repository.UserRepository = (*UserRepo)(nil)

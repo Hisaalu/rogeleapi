@@ -15,6 +15,12 @@ type UserFilter struct {
 	Offset  int
 }
 
+type StudentStats struct {
+	UserID       int64
+	QuizzesTaken int
+	AvgScore     float64
+}
+
 type UserRepository interface {
 	Create(ctx context.Context, u *domain.User) (*domain.User, error)
 	GetByID(ctx context.Context, id int64) (*domain.User, error)
@@ -24,6 +30,7 @@ type UserRepository interface {
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context, f UserFilter) ([]*domain.User, error)
 	UpdateLastLogin(ctx context.Context, id int64) error
+	GetStudentStats(ctx context.Context) (map[int64]StudentStats, error)
 }
 
 type LessonFilter struct {

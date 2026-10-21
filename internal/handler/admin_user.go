@@ -57,8 +57,8 @@ func (h *AdminUserHandler) requireAdmin(w http.ResponseWriter, r *http.Request) 
 		httputil.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")
 		return false
 	}
-	if claims.Role != domain.RoleAdmin {
-		httputil.Error(w, http.StatusForbidden, "FORBIDDEN", "admin only")
+	if claims.Role != domain.RoleAdmin && claims.Role != domain.RoleTeacher {
+		httputil.Error(w, http.StatusForbidden, "FORBIDDEN", "admin or teacher only")
 		return false
 	}
 	return true
@@ -199,6 +199,108 @@ func (h *AdminUserHandler) SetPassword(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, map[string]string{
 		"message": "password updated",
 	})
+}
+
+func (h *AdminUserHandler) GetStudentDetails(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		httputil.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")
+		return
+	}
+	if claims.Role != domain.RoleAdmin && claims.Role != domain.RoleTeacher {
+		httputil.Error(w, http.StatusForbidden, "FORBIDDEN", "only teachers and admins can view student details")
+		return
+	}
+
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "id must be an integer")
+		return
+	}
+
+	user, err := h.users.GetByID(r.Context(), id)
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+
+	attempts, err := h.quiz.ListAttemptsByUser(r.Context(), id)
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, map[string]interface{}{
+		"user":     dto.FromDomain(user),
+		"attempts": dto.AttemptsFromDomain(attempts),
+	})
+}
+
+func (h *AdminUserHandler) ListStudents(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		httputil.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")
+		return
+	}
+	if claims.Role != domain.RoleAdmin && claims.Role != domain.RoleTeacher {
+		httputil.Error(w, http.StatusForbidden, "FORBIDDEN", "only teachers and admins can list students")
+		return
+	}
+
+	q := r.URL.Query().Get("q")
+	classIDStr := r.URL.Query().Get("class_id")
+
+	f := repository.UserFilter{
+		Search: q,
+		Limit:  100,
+	}
+	if classIDStr != "" {
+		if id, err := strconv.ParseInt(classIDStr, 10, 64); err == nil {
+			f.ClassID = &id
+		}
+	}
+
+	learnerRole := domain.RoleLearner
+	f.Role = &learnerRole
+	learners, _ := h.users.List(r.Context(), f)
+
+	externalRole := domain.RoleExternal
+	f.Role = &externalRole
+	externals, _ := h.users.List(r.Context(), f)
+
+	allUsers := append(learners, externals...)
+
+	statsMap, _ := h.users.GetStudentStats(r.Context())
+
+	type StudentResponse struct {
+		ID           int64   `json:"id"`
+		Email        string  `json:"email"`
+		FirstName    *string `json:"first_name,omitempty"`
+		LastName     *string `json:"last_name,omitempty"`
+		Role         string  `json:"role"`
+		ClassID      *int64  `json:"class_id,omitempty"`
+		ProfilePhoto *string `json:"profile_photo,omitempty"`
+		QuizzesTaken int     `json:"quizzes_taken"`
+		AvgScore     float64 `json:"avg_score"`
+	}
+
+	out := make([]StudentResponse, 0, len(allUsers))
+	for _, u := range allUsers {
+		stat := statsMap[u.ID]
+		out = append(out, StudentResponse{
+			ID:           u.ID,
+			Email:        u.Email,
+			FirstName:    u.FirstName,
+			LastName:     u.LastName,
+			Role:         string(u.Role),
+			ClassID:      u.ClassID,
+			ProfilePhoto: u.ProfilePhoto,
+			QuizzesTaken: stat.QuizzesTaken,
+			AvgScore:     stat.AvgScore,
+		})
+	}
+
+	httputil.JSON(w, http.StatusOK, out)
 }
 
 var _ = context.Background

@@ -211,6 +211,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 
 				r.Get("/stats", deps.AdminHandler.Overview)
 				r.Get("/learners-by-class", deps.AdminHandler.LearnersByClass)
+				r.Get("/students", deps.AdminUserHandler.ListStudents)
 
 				r.Get("/activity", deps.AdminHandler.RecentActivity)
 				r.Get("/recent-signups", deps.AdminHandler.RecentSignups)
@@ -230,6 +231,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 					r.Get("/users/{id}/submissions", deps.AdminUserHandler.HomeworkSubmissions)
 					r.Post("/users/{id}/force-reset", deps.AdminUserHandler.ForcePasswordReset)
 					r.Post("/users/{id}/set-password", deps.AdminUserHandler.SetPassword)
+					r.Get("/users/{id}/details", deps.AdminUserHandler.GetStudentDetails)
 				}
 			})
 		}
