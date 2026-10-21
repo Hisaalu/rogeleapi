@@ -160,7 +160,7 @@ func run() error {
 		log.Warn("r2 storage is not configured")
 	}
 
-	configHandler := handler.NewConfigHandler(settingsRepo, log)
+	configHandler := handler.NewConfigHandler(settingsRepo, database, log)
 	adminHandler := handler.NewAdminHandler(adminStatsRepo, log)
 	adminUserHandler := handler.NewAdminUserHandler(
 		repos.User,

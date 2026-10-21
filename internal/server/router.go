@@ -57,6 +57,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Route("/api/v1", func(r chi.Router) {
 		if deps.ConfigHandler != nil {
 			r.Get("/config/public", deps.ConfigHandler.PublicConfig)
+			r.Get("/config/classes", deps.ConfigHandler.PublicClasses)
 		}
 
 		authHandler := handler.NewAuthHandler(deps.AuthSvc, deps.Repos.User, deps.Tokens, deps.Log)

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"database/sql"
 	"log/slog"
 	"net/http"
 
@@ -14,11 +15,12 @@ type PublicSettingsReader interface {
 
 type ConfigHandler struct {
 	repo PublicSettingsReader
+	db   *sql.DB
 	log  *slog.Logger
 }
 
-func NewConfigHandler(repo PublicSettingsReader, log *slog.Logger) *ConfigHandler {
-	return &ConfigHandler{repo: repo, log: log}
+func NewConfigHandler(repo PublicSettingsReader, db *sql.DB, log *slog.Logger) *ConfigHandler {
+	return &ConfigHandler{repo: repo, db: db, log: log}
 }
 
 func (h *ConfigHandler) PublicConfig(w http.ResponseWriter, r *http.Request) {
@@ -43,4 +45,41 @@ func (h *ConfigHandler) PublicConfig(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, map[string]any{
 		"branding": branding,
 	})
+}
+
+func (h *ConfigHandler) PublicClasses(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.db.QueryContext(r.Context(), `
+		SELECT id, name FROM classes
+		WHERE is_active = true
+		ORDER BY name ASC
+	`)
+	if err != nil {
+		h.log.Error("query classes", "error", err)
+		httputil.Error(w, http.StatusInternalServerError, "DB_ERROR", "could not fetch classes")
+		return
+	}
+	defer rows.Close()
+
+	type Class struct {
+		ID   int64  `json:"id"`
+		Name string `json:"name"`
+	}
+
+	classes := make([]Class, 0)
+	for rows.Next() {
+		var c Class
+		if err := rows.Scan(&c.ID, &c.Name); err != nil {
+			h.log.Error("scan class", "error", err)
+			httputil.Error(w, http.StatusInternalServerError, "SCAN_ERROR", "could not parse classes")
+			return
+		}
+		classes = append(classes, c)
+	}
+	if err := rows.Err(); err != nil {
+		h.log.Error("iterate classes", "error", err)
+		httputil.Error(w, http.StatusInternalServerError, "DB_ERROR", "could not read classes")
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, classes)
 }
