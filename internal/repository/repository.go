@@ -106,6 +106,12 @@ type QuizFilter struct {
 	Offset    int
 }
 
+type DailyPerformance struct {
+	Date         string  `json:"date"`
+	AvgScore     float64 `json:"avg_score"`
+	AttemptCount int     `json:"attempt_count"`
+}
+
 type QuizRepository interface {
 	Create(ctx context.Context, q *domain.Quiz) (*domain.Quiz, error)
 	GetByID(ctx context.Context, id int64) (*domain.Quiz, error)
@@ -136,6 +142,8 @@ type QuizRepository interface {
 
 	GetQuizForUpdate(ctx context.Context, quizID int64) (*domain.Quiz, error)
 	GetGlobalAverageScore(ctx context.Context) (int, error)
+
+	GetQuizPerformanceByDay(ctx context.Context, days int) ([]DailyPerformance, error)
 }
 
 type SubscriptionFilter struct {

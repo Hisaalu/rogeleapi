@@ -664,4 +664,39 @@ func (r *QuizRepo) GetGlobalAverageScore(ctx context.Context) (int, error) {
 	return int(avg), nil
 }
 
+type DailyPerformance struct {
+	Date         string  `json:"date"`
+	AvgScore     float64 `json:"avg_score"`
+	AttemptCount int     `json:"attempt_count"`
+}
+
+func (r *QuizRepo) GetQuizPerformanceByDay(ctx context.Context, days int) ([]repository.DailyPerformance, error) {
+	query := `
+		SELECT 
+			TO_CHAR(completed_at, 'YYYY-MM-DD') as date,
+			COALESCE(AVG(score), 0) as avg_score,
+			COUNT(*) as attempt_count
+		FROM quiz_attempts
+		WHERE status = 'completed' 
+		  AND completed_at >= NOW() - ($1 || ' days')::INTERVAL
+		GROUP BY TO_CHAR(completed_at, 'YYYY-MM-DD')
+		ORDER BY date ASC
+	`
+	rows, err := r.db.QueryContext(ctx, query, days)
+	if err != nil {
+		return nil, fmt.Errorf("get quiz performance by day: %w", err)
+	}
+	defer rows.Close()
+
+	var results []repository.DailyPerformance
+	for rows.Next() {
+		var p repository.DailyPerformance
+		if err := rows.Scan(&p.Date, &p.AvgScore, &p.AttemptCount); err != nil {
+			return nil, err
+		}
+		results = append(results, p)
+	}
+	return results, rows.Err()
+}
+
 var _ repository.QuizRepository = (*QuizRepo)(nil)

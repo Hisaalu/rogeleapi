@@ -123,6 +123,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Use(middleware.Authenticate(deps.Tokens))
 			r.Get("/", quizHandler.List)
 			r.Get("/global-stats", quizHandler.GetGlobalStats)
+			r.Get("/performance-chart", quizHandler.GetPerformanceChart)
 			r.Get("/my-attempts", quizHandler.ListMyAttempts)
 			r.Post("/", quizHandler.Create)
 			r.Get("/attempts/{attemptId}", quizHandler.GetAttempt)

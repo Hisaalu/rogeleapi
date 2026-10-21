@@ -541,3 +541,28 @@ func (h *QuizHandler) GetGlobalStats(w http.ResponseWriter, r *http.Request) {
 
 	httputil.JSON(w, http.StatusOK, map[string]int{"average_score": avg})
 }
+
+func (h *QuizHandler) GetPerformanceChart(w http.ResponseWriter, r *http.Request) {
+	actor, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	if actor.Role != domain.RoleAdmin && actor.Role != domain.RoleTeacher {
+		httputil.Error(w, http.StatusForbidden, "FORBIDDEN", "only teachers and admins can view analytics")
+		return
+	}
+
+	daysStr := r.URL.Query().Get("days")
+	days, _ := strconv.Atoi(daysStr)
+	if days <= 0 {
+		days = 30
+	}
+
+	perf, err := h.svc.GetQuizPerformanceByDay(r.Context(), days)
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, perf)
+}

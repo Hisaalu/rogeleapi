@@ -617,3 +617,7 @@ func (s *QuizService) ListRawQuestions(ctx context.Context, quizID int64) ([]*do
 func (s *QuizService) GetGlobalAverageScore(ctx context.Context) (int, error) {
 	return s.quizzes.GetGlobalAverageScore(ctx)
 }
+
+func (s *QuizService) GetQuizPerformanceByDay(ctx context.Context, days int) ([]repository.DailyPerformance, error) {
+	return s.quizzes.GetQuizPerformanceByDay(ctx, days)
+}
