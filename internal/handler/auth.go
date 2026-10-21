@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"golang.org/x/crypto/bcrypt"
 	"log/slog"
 	"net/http"
 
@@ -236,4 +237,45 @@ func (h *AuthHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.JSON(w, http.StatusOK, map[string]string{"message": "profile updated successfully"})
+}
+
+func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		httputil.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")
+		return
+	}
+
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := httputil.DecodeJSON(r, &req); err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+
+	u, err := h.users.GetByID(r.Context(), claims.UserID)
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(req.CurrentPassword)); err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_PASSWORD", "current password is incorrect")
+		return
+	}
+
+	newHash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+
+	if err := h.users.UpdatePassword(r.Context(), u.ID, string(newHash)); err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, map[string]string{"message": "password updated successfully"})
 }

@@ -71,6 +71,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.Authenticate(deps.Tokens))
 				r.Get("/me", authHandler.Me)
+				r.Post("/change-password", authHandler.ChangePassword)
 			})
 		})
 
