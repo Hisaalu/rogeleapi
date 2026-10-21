@@ -206,14 +206,13 @@ func NewRouter(deps RouterDeps) http.Handler {
 		if deps.AdminHandler != nil || deps.AdminUserHandler != nil || deps.NotificationHandler != nil {
 			r.Route("/admin", func(r chi.Router) {
 				r.Use(middleware.Authenticate(deps.Tokens))
+
+				r.Get("/stats", deps.AdminHandler.Overview)
 				r.Get("/learners-by-class", deps.AdminHandler.LearnersByClass)
 
-				if deps.AdminHandler != nil {
-					r.Get("/stats", deps.AdminHandler.Overview)
-					r.Get("/activity", deps.AdminHandler.RecentActivity)
-					r.Get("/recent-signups", deps.AdminHandler.RecentSignups)
-					r.Get("/recent-payments", deps.AdminHandler.RecentPayments)
-				}
+				r.Get("/activity", deps.AdminHandler.RecentActivity)
+				r.Get("/recent-signups", deps.AdminHandler.RecentSignups)
+				r.Get("/recent-payments", deps.AdminHandler.RecentPayments)
 
 				if deps.ServiceTokenHandler != nil {
 					r.Post("/service-tokens", deps.ServiceTokenHandler.Issue)
@@ -229,10 +228,6 @@ func NewRouter(deps RouterDeps) http.Handler {
 					r.Get("/users/{id}/submissions", deps.AdminUserHandler.HomeworkSubmissions)
 					r.Post("/users/{id}/force-reset", deps.AdminUserHandler.ForcePasswordReset)
 					r.Post("/users/{id}/set-password", deps.AdminUserHandler.SetPassword)
-				}
-
-				if deps.NotificationHandler != nil {
-					r.Post("/notifications/broadcast", deps.NotificationHandler.Broadcast)
 				}
 			})
 		}

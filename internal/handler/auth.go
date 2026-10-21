@@ -178,13 +178,17 @@ func (h *AuthHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ADDED: Bio, Qualification, Specialization
 	var req struct {
-		FirstName    *string `json:"first_name,omitempty"`
-		LastName     *string `json:"last_name,omitempty"`
-		Email        *string `json:"email,omitempty"`
-		Phone        *string `json:"phone,omitempty"`
-		ProfilePhoto *string `json:"profile_photo,omitempty"`
-		ClassID      *int64  `json:"class_id,omitempty"`
+		FirstName      *string `json:"first_name,omitempty"`
+		LastName       *string `json:"last_name,omitempty"`
+		Email          *string `json:"email,omitempty"`
+		Phone          *string `json:"phone,omitempty"`
+		Bio            *string `json:"bio,omitempty"`
+		Qualification  *string `json:"qualification,omitempty"`
+		Specialization *string `json:"specialization,omitempty"`
+		ProfilePhoto   *string `json:"profile_photo,omitempty"`
+		ClassID        *int64  `json:"class_id,omitempty"`
 	}
 
 	if err := httputil.DecodeJSON(r, &req); err != nil {
@@ -209,6 +213,15 @@ func (h *AuthHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Phone != nil {
 		u.Phone = req.Phone
+	}
+	if req.Bio != nil {
+		u.Bio = req.Bio
+	}
+	if req.Qualification != nil {
+		u.Qualification = req.Qualification
+	}
+	if req.Specialization != nil {
+		u.Specialization = req.Specialization
 	}
 	if req.ProfilePhoto != nil {
 		u.ProfilePhoto = req.ProfilePhoto

@@ -34,8 +34,17 @@ func (h *AdminHandler) requireAdmin(w http.ResponseWriter, r *http.Request) bool
 	return true
 }
 
+func (h *AdminHandler) requireAuth(w http.ResponseWriter, r *http.Request) bool {
+	_, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		httputil.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")
+		return false
+	}
+	return true
+}
+
 func (h *AdminHandler) Overview(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdmin(w, r) {
+	if !h.requireAuth(w, r) {
 		return
 	}
 	stats, err := h.repo.GetOverview(r.Context())
@@ -44,6 +53,18 @@ func (h *AdminHandler) Overview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.JSON(w, http.StatusOK, dto.AdminOverviewFromDomain(stats))
+}
+
+func (h *AdminHandler) LearnersByClass(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAuth(w, r) {
+		return
+	}
+	items, err := h.repo.LearnersByClass(r.Context())
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+	httputil.JSON(w, http.StatusOK, dto.ClassLearnerCountsFromDomain(items))
 }
 
 func (h *AdminHandler) RecentActivity(w http.ResponseWriter, r *http.Request) {
@@ -83,16 +104,4 @@ func (h *AdminHandler) RecentPayments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.JSON(w, http.StatusOK, dto.RecentPaymentsFromDomain(items))
-}
-
-func (h *AdminHandler) LearnersByClass(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdmin(w, r) {
-		return
-	}
-	items, err := h.repo.LearnersByClass(r.Context())
-	if err != nil {
-		httputil.DomainError(w, err, h.log)
-		return
-	}
-	httputil.JSON(w, http.StatusOK, dto.ClassLearnerCountsFromDomain(items))
 }
