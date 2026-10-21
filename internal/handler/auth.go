@@ -8,26 +8,27 @@ import (
 	"github.com/Hisaalu/rogele/internal/domain"
 	"github.com/Hisaalu/rogele/internal/dto"
 	"github.com/Hisaalu/rogele/internal/httputil"
+	"github.com/Hisaalu/rogele/internal/repository"
 	"github.com/Hisaalu/rogele/internal/server/middleware"
 	"github.com/Hisaalu/rogele/internal/service"
 )
 
 type AuthHandler struct {
 	authSvc *service.AuthService
-	userSvc *service.UserService
+	users   repository.UserRepository
 	tokens  *auth.TokenManager
 	log     *slog.Logger
 }
 
 func NewAuthHandler(
 	authSvc *service.AuthService,
-	userSvc *service.UserService,
+	users repository.UserRepository,
 	tokens *auth.TokenManager,
 	log *slog.Logger,
 ) *AuthHandler {
 	return &AuthHandler{
 		authSvc: authSvc,
-		userSvc: userSvc,
+		users:   users,
 		tokens:  tokens,
 		log:     log,
 	}
@@ -122,7 +123,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.userSvc.GetByID(r.Context(), claims.UserID)
+	user, err := h.users.GetByID(r.Context(), claims.UserID)
 	if err != nil {
 		httputil.DomainError(w, err, h.log)
 		return
@@ -168,4 +169,58 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, map[string]string{
 		"message": "password updated",
 	})
+}
+
+func (h *AuthHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		httputil.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")
+		return
+	}
+
+	var req struct {
+		FirstName    *string `json:"first_name,omitempty"`
+		LastName     *string `json:"last_name,omitempty"`
+		Email        *string `json:"email,omitempty"`
+		Phone        *string `json:"phone,omitempty"`
+		ProfilePhoto *string `json:"profile_photo,omitempty"`
+		ClassID      *int64  `json:"class_id,omitempty"`
+	}
+
+	if err := httputil.DecodeJSON(r, &req); err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+
+	u, err := h.users.GetByID(r.Context(), claims.UserID)
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+
+	if req.FirstName != nil {
+		u.FirstName = req.FirstName
+	}
+	if req.LastName != nil {
+		u.LastName = req.LastName
+	}
+	if req.Email != nil {
+		u.Email = *req.Email
+	}
+	if req.Phone != nil {
+		u.Phone = req.Phone
+	}
+	if req.ProfilePhoto != nil {
+		u.ProfilePhoto = req.ProfilePhoto
+	}
+	if req.ClassID != nil {
+		u.ClassID = req.ClassID
+	}
+
+	if err := h.users.Update(r.Context(), u); err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, map[string]string{"message": "profile updated successfully"})
 }

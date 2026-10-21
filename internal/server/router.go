@@ -59,13 +59,14 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Get("/config/public", deps.ConfigHandler.PublicConfig)
 		}
 
-		authHandler := handler.NewAuthHandler(deps.AuthSvc, deps.UserSvc, deps.Tokens, deps.Log)
+		authHandler := handler.NewAuthHandler(deps.AuthSvc, deps.Repos.User, deps.Tokens, deps.Log)
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/register", authHandler.Register)
 			r.Post("/login", authHandler.Login)
 			r.Post("/refresh", authHandler.Refresh)
 			r.Post("/forgot-password", authHandler.ForgotPassword)
 			r.Post("/reset-password", authHandler.ResetPassword)
+			r.With(middleware.Authenticate(deps.Tokens)).Patch("/me", authHandler.UpdateMe)
 
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.Authenticate(deps.Tokens))
