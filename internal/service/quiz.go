@@ -136,7 +136,30 @@ func (s *QuizService) List(ctx context.Context, actor ActorContext, f repository
 	default:
 		return nil, domain.ErrForbidden
 	}
-	return s.quizzes.List(ctx, f)
+
+	quizzes, err := s.quizzes.List(ctx, f)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	var filtered []*domain.Quiz
+
+	for _, q := range quizzes {
+		if q.EndDate != nil && now.After(q.EndDate.UTC()) {
+			if q.IsPublished {
+				q.IsPublished = false
+				q.Status = "draft"
+				_ = s.quizzes.Update(ctx, q)
+			}
+			if actor.Role == domain.RoleLearner || actor.Role == domain.RoleExternal {
+				continue
+			}
+		}
+		filtered = append(filtered, q)
+	}
+
+	return filtered, nil
 }
 
 func (s *QuizService) Update(ctx context.Context, id int64, actor ActorContext, in UpdateQuizInput) (*domain.Quiz, error) {
