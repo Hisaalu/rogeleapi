@@ -128,6 +128,7 @@ type QuizRepository interface {
 	CountAttemptsForQuiz(ctx context.Context, quizID int64) (int, error)
 
 	GetQuizForUpdate(ctx context.Context, quizID int64) (*domain.Quiz, error)
+	GetGlobalAverageScore(ctx context.Context) (int, error)
 }
 
 type SubscriptionFilter struct {

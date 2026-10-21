@@ -613,3 +613,7 @@ func (s *QuizService) ListAttemptAnswers(ctx context.Context, attemptID int64) (
 func (s *QuizService) ListRawQuestions(ctx context.Context, quizID int64) ([]*domain.QuizQuestion, error) {
 	return s.quizzes.ListQuestions(ctx, quizID)
 }
+
+func (s *QuizService) GetGlobalAverageScore(ctx context.Context) (int, error) {
+	return s.quizzes.GetGlobalAverageScore(ctx)
+}

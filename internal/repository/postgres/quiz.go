@@ -651,4 +651,17 @@ func (r *QuizRepo) GetQuizForUpdate(ctx context.Context, quizID int64) (*domain.
 	return scanQuiz(r.db.QueryRowContext(ctx, query, quizID))
 }
 
+func (r *QuizRepo) GetGlobalAverageScore(ctx context.Context) (int, error) {
+	var avg float64
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COALESCE(AVG(score), 0)
+		FROM quiz_attempts
+		WHERE status = 'completed' AND score IS NOT NULL
+	`).Scan(&avg)
+	if err != nil {
+		return 0, err
+	}
+	return int(avg), nil
+}
+
 var _ repository.QuizRepository = (*QuizRepo)(nil)

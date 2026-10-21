@@ -522,3 +522,22 @@ func (h *QuizHandler) AddBulkQuestions(w http.ResponseWriter, r *http.Request) {
 
 	httputil.JSON(w, http.StatusCreated, map[string]string{"message": "Questions added successfully"})
 }
+
+func (h *QuizHandler) GetGlobalStats(w http.ResponseWriter, r *http.Request) {
+	actor, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	if actor.Role != domain.RoleAdmin && actor.Role != domain.RoleTeacher {
+		httputil.Error(w, http.StatusForbidden, "FORBIDDEN", "only teachers and admins can view global stats")
+		return
+	}
+
+	avg, err := h.svc.GetGlobalAverageScore(r.Context())
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, map[string]int{"average_score": avg})
+}

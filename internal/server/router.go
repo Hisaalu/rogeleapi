@@ -121,6 +121,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 		r.Route("/quizzes", func(r chi.Router) {
 			r.Use(middleware.Authenticate(deps.Tokens))
 			r.Get("/", quizHandler.List)
+			r.Get("/global-stats", quizHandler.GetGlobalStats)
 			r.Get("/my-attempts", quizHandler.ListMyAttempts)
 			r.Post("/", quizHandler.Create)
 			r.Get("/attempts/{attemptId}", quizHandler.GetAttempt)
