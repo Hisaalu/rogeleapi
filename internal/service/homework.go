@@ -64,7 +64,39 @@ func (s *HomeworkService) Create(ctx context.Context, teacherID int64, in Create
 		DueDate:     in.DueDate,
 		IsActive:    true,
 	}
-	return s.repo.Create(ctx, hw)
+	created, err := s.repo.Create(ctx, hw)
+	if err != nil {
+		return nil, err
+	}
+
+	s.notifyNewHomework(ctx, created)
+	return created, nil
+}
+
+func (s *HomeworkService) notifyNewHomework(ctx context.Context, hw *domain.Homework) {
+	if s.notifications == nil {
+		return
+	}
+
+	learners, err := s.users.List(ctx, repository.UserFilter{
+		Role:    rolePtr(domain.RoleLearner),
+		ClassID: &hw.ClassID,
+		Limit:   500,
+	})
+	if err != nil || len(learners) == 0 {
+		return
+	}
+
+	ids := make([]int64, 0, len(learners))
+	for _, u := range learners {
+		ids = append(ids, u.ID)
+	}
+
+	link := fmt.Sprintf("/learner/homework/%d", hw.ID)
+	title := "New homework"
+	message := hw.Title
+
+	_ = s.notifications.NotifyUsers(ctx, ids, domain.NotificationTypeHomework, title, message, &link)
 }
 
 func (s *HomeworkService) GetByID(ctx context.Context, id int64, actor ActorContext) (*domain.Homework, error) {

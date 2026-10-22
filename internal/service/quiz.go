@@ -102,7 +102,14 @@ func (s *QuizService) Create(ctx context.Context, teacherID int64, in CreateQuiz
 		EndDate:      in.EndDate,
 		Status:       status,
 	}
-	return s.quizzes.Create(ctx, q)
+	created, err := s.quizzes.Create(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	if created.IsPublished {
+		s.notifyNewQuiz(ctx, created)
+	}
+	return created, nil
 }
 
 func (s *QuizService) GetByID(ctx context.Context, id int64, actor ActorContext) (*domain.Quiz, error) {
@@ -591,7 +598,7 @@ func (s *QuizService) notifyNewQuiz(ctx context.Context, q *domain.Quiz) {
 		ids = append(ids, u.ID)
 	}
 
-	link := fmt.Sprintf("/quizzes/%d", q.ID)
+	link := fmt.Sprintf("/learner/quizzes/%d", q.ID)
 	title := "New quiz"
 	message := q.Title
 

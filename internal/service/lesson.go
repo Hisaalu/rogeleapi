@@ -66,7 +66,14 @@ func (s *LessonService) Create(ctx context.Context, teacherID int64, in CreateLe
 		IsPublished: in.IsPublished,
 		IsApproved:  false,
 	}
-	return s.lessons.Create(ctx, l)
+	created, err := s.lessons.Create(ctx, l)
+	if err != nil {
+		return nil, err
+	}
+	if created.IsPublished {
+		s.notifyNewLesson(ctx, created)
+	}
+	return created, nil
 }
 
 func (s *LessonService) GetByID(ctx context.Context, id int64, actor ActorContext) (*domain.Lesson, error) {
@@ -197,7 +204,7 @@ func (s *LessonService) notifyNewLesson(ctx context.Context, l *domain.Lesson) {
 		ids = append(ids, u.ID)
 	}
 
-	link := fmt.Sprintf("/lessons/%d", l.ID)
+	link := fmt.Sprintf("/learner/lessons/%d", l.ID)
 	title := "New lesson"
 	message := l.Title
 
