@@ -22,14 +22,14 @@ var DefaultTemplates = []DefaultTemplate{
 		Name:    "payment_confirmation",
 		Subject: "Payment received - {{.PlanName}}",
 		Body: `<p style="font-size:18px;font-weight:600;margin:0 0 16px;">Hi {{.FirstName}},</p>
-<p style="margin:0 0 16px;">We've received your payment for <strong>{{.PlanName}}</strong>.</p>
+<p style="margin:0 0 16px;">We've received your payment for the <strong>{{.PlanName}}</strong> plan.</p>
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0;font-size:14px;">
-  <tr><td style="padding:6px 14px 6px 0;color:#666;">Amount</td><td><strong>{{.Amount}} {{.Currency}}</strong></td></tr>
+  <tr><td style="padding:6px 14px 6px 0;color:#666;">Amount</td><td><strong>UGX {{.Amount}}</strong></td></tr>
   <tr><td style="padding:6px 14px 6px 0;color:#666;">Method</td><td>{{.PaymentMethod}}</td></tr>
   <tr><td style="padding:6px 14px 6px 0;color:#666;">Transaction</td><td>{{.TransactionID}}</td></tr>
 </table>
 <p style="margin:0 0 16px;">Your subscription is active until <strong>{{.EndDate}}</strong>.</p>
-<p style="margin:0;color:#888;font-size:13px;">Thank you for using our platform.</p>`,
+<p style="margin:0;color:#888;font-size:13px;">Thank you for supporting the platform.</p>`,
 	},
 	{
 		Name:    "subscription_expiring",

@@ -10,10 +10,6 @@ import (
 	"github.com/Hisaalu/rogele/internal/repository"
 )
 
-const (
-	trialDurationDays = 14
-)
-
 type SubscribeInput struct {
 	PlanID        int64
 	PaymentMethod string
@@ -30,6 +26,7 @@ type SubscriptionService struct {
 
 type planLookup interface {
 	GetPlan(ctx context.Context, id int64) (*domain.SubscriptionPlan, error)
+	GetFreePlan(ctx context.Context) (*domain.SubscriptionPlan, error)
 }
 
 func NewSubscriptionService(
@@ -69,8 +66,10 @@ func (s *SubscriptionService) ListAll(ctx context.Context, actor ActorContext, f
 }
 
 func (s *SubscriptionService) StartTrial(ctx context.Context, actor ActorContext) (*domain.FreeTrial, error) {
-	if actor.Role != domain.RoleExternal {
-		return nil, fmt.Errorf("%w: only external users can start a free trial", domain.ErrForbidden)
+	durationDays := 14
+	freePlan, err := s.plans.GetFreePlan(ctx)
+	if err == nil && freePlan != nil && freePlan.DurationDays > 0 {
+		durationDays = freePlan.DurationDays
 	}
 
 	u, err := s.users.GetByID(ctx, actor.UserID)
@@ -102,13 +101,26 @@ func (s *SubscriptionService) StartTrial(ctx context.Context, actor ActorContext
 	trial := &domain.FreeTrial{
 		UserID:    &actor.UserID,
 		StartDate: now,
-		EndDate:   now.AddDate(0, 0, trialDurationDays),
+		EndDate:   now.AddDate(0, 0, durationDays),
 	}
 	return s.trials.Create(ctx, trial)
 }
 
 func (s *SubscriptionService) GetMyTrial(ctx context.Context, actor ActorContext) (*domain.FreeTrial, error) {
-	return s.trials.GetByUser(ctx, actor.UserID)
+	trial, err := s.trials.GetByUser(ctx, actor.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	durationDays := 14
+	freePlan, err := s.plans.GetFreePlan(ctx)
+	if err == nil && freePlan != nil && freePlan.DurationDays > 0 {
+		durationDays = freePlan.DurationDays
+	}
+
+	trial.EndDate = trial.StartDate.AddDate(0, 0, durationDays)
+
+	return trial, nil
 }
 
 func (s *SubscriptionService) Cancel(ctx context.Context, id int64, actor ActorContext) (*domain.Subscription, error) {

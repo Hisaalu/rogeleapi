@@ -131,6 +131,7 @@ func (h *SubscriptionHandler) MyTrial(w http.ResponseWriter, r *http.Request) {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
+
 	httputil.JSON(w, http.StatusOK, dto.TrialFromDomain(trial))
 }
 

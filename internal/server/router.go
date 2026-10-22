@@ -167,6 +167,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Get("/history", payHandler.MyHistory)
 			r.Get("/all", payHandler.ListAll)
 			r.Get("/{id}/status", payHandler.GetStatus)
+			r.Post("/preview", payHandler.Preview)
 		})
 
 		webhookHandler := handler.NewWebhookHandler(deps.PaySvc, deps.Log)

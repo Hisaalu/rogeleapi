@@ -83,13 +83,38 @@ func (s *PaymentService) Initiate(ctx context.Context, actor ActorContext, in In
 		return nil, fmt.Errorf("%w: plan is not active", domain.ErrInvalidInput)
 	}
 
+	amountToPay := plan.Price
+
+	if currentSub, err := s.subscriptions.GetMyActive(ctx, actor); err == nil && currentSub != nil {
+		now := time.Now()
+		if currentSub.EndDate.After(now) {
+			currentPlanID, _ := strconv.ParseInt(string(currentSub.PlanType), 10, 64)
+			currentPlan, err := s.plans.GetPlan(ctx, currentPlanID)
+
+			if err == nil && currentPlan != nil {
+				if plan.Price > currentPlan.Price {
+					daysLeft := currentSub.EndDate.Sub(now).Hours() / 24
+					if daysLeft > float64(currentPlan.DurationDays) {
+						daysLeft = float64(currentPlan.DurationDays)
+					}
+					dailyRate := currentPlan.Price / float64(currentPlan.DurationDays)
+					credit := dailyRate * daysLeft
+					amountToPay = plan.Price - credit
+					if amountToPay < 0 {
+						amountToPay = 0
+					}
+				}
+			}
+		}
+	}
+
 	uid := actor.UserID
 	planRef := strconv.FormatInt(plan.ID, 10)
 	methodCopy := method
 
 	payment := &domain.Payment{
 		UserID:        &uid,
-		Amount:        &plan.Price,
+		Amount:        &amountToPay,
 		PlanType:      &planRef,
 		PaymentMethod: &methodCopy,
 		PhoneNumber:   &in.PhoneNumber,
@@ -104,7 +129,7 @@ func (s *PaymentService) Initiate(ctx context.Context, actor ActorContext, in In
 	reference := fmt.Sprintf("plan:%d", plan.ID)
 
 	result, err := provider.Initiate(ctx, payments.InitiateRequest{
-		Amount:     plan.Price,
+		Amount:     amountToPay,
 		Currency:   s.currency,
 		Phone:      in.PhoneNumber,
 		ExternalID: externalID,
@@ -281,7 +306,7 @@ func (s *PaymentService) notifyPaymentStatus(ctx context.Context, p *domain.Paym
 		return
 	}
 
-	link := "/subscription"
+	link := "/learner/subscription"
 
 	var title, message string
 	switch status {
@@ -407,4 +432,43 @@ func extractStatus(payload map[string]any) string {
 		return extractStatus(data)
 	}
 	return ""
+}
+
+func (s *PaymentService) calculateProratedAmount(ctx context.Context, actor ActorContext, plan *domain.SubscriptionPlan) float64 {
+	amountToPay := plan.Price
+
+	if currentSub, err := s.subscriptions.GetMyActive(ctx, actor); err == nil && currentSub != nil {
+		now := time.Now()
+		if currentSub.EndDate.After(now) {
+			currentPlanID, _ := strconv.ParseInt(string(currentSub.PlanType), 10, 64)
+			currentPlan, err := s.plans.GetPlan(ctx, currentPlanID)
+
+			if err == nil && currentPlan != nil {
+				if plan.Price > currentPlan.Price {
+					daysLeft := currentSub.EndDate.Sub(now).Hours() / 24
+					if daysLeft > float64(currentPlan.DurationDays) {
+						daysLeft = float64(currentPlan.DurationDays)
+					}
+					dailyRate := currentPlan.Price / float64(currentPlan.DurationDays)
+					credit := dailyRate * daysLeft
+					amountToPay = plan.Price - credit
+					if amountToPay < 0 {
+						amountToPay = 0
+					}
+				}
+			}
+		}
+	}
+	return amountToPay
+}
+
+func (s *PaymentService) PreviewPayment(ctx context.Context, actor ActorContext, planID int64) (float64, error) {
+	plan, err := s.plans.GetPlan(ctx, planID)
+	if err != nil {
+		return 0, err
+	}
+	if !plan.IsActive {
+		return 0, fmt.Errorf("%w: plan is not active", domain.ErrInvalidInput)
+	}
+	return s.calculateProratedAmount(ctx, actor, plan), nil
 }

@@ -58,6 +58,7 @@ type AuthService struct {
 	activity   *ActivityService
 	webBaseURL string
 	tokens     *auth.TokenManager
+	subs       *SubscriptionService
 }
 
 func NewAuthService(
@@ -67,6 +68,7 @@ func NewAuthService(
 	activity *ActivityService,
 	webBaseURL string,
 	tokens *auth.TokenManager,
+	subs *SubscriptionService,
 ) *AuthService {
 	return &AuthService{
 		users:      users,
@@ -75,6 +77,7 @@ func NewAuthService(
 		activity:   activity,
 		webBaseURL: webBaseURL,
 		tokens:     tokens,
+		subs:       subs,
 	}
 }
 
@@ -126,6 +129,11 @@ func (s *AuthService) Register(ctx context.Context, in RegisterInput) (*AuthResu
 	created, err := s.users.Create(ctx, u)
 	if err != nil {
 		return nil, fmt.Errorf("create user: %w", err)
+	}
+
+	if s.subs != nil {
+		actor := ActorContext{UserID: created.ID, Role: created.Role}
+		_, _ = s.subs.StartTrial(ctx, actor)
 	}
 
 	return s.issueTokens(created)

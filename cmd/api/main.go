@@ -108,6 +108,8 @@ func run() error {
 	)
 	go expiryScheduler.Run(ctx)
 
+	subSvc := service.NewSubscriptionService(repos.Subscription, planRepo, repos.FreeTrial, repos.User, repos.Payment)
+
 	authSvc := service.NewAuthService(
 		repos.User,
 		repos.PasswordReset,
@@ -115,9 +117,10 @@ func run() error {
 		activitySvc,
 		cfg.Email.WebBaseURL,
 		tokenManager,
+		subSvc,
 	)
+
 	userSvc := service.NewUserService(repos.User)
-	subSvc := service.NewSubscriptionService(repos.Subscription, planRepo, repos.FreeTrial, repos.User, repos.Payment)
 	lessonSvc := service.NewLessonService(repos.Lesson, repos.User, notificationSvc, activitySvc)
 	homeworkSvc := service.NewHomeworkService(repos.Homework, repos.User, notificationSvc, activitySvc)
 	quizSvc := service.NewQuizService(repos.Quiz, repos.User, notificationSvc, activitySvc)

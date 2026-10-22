@@ -142,3 +142,27 @@ func (h *PaymentHandler) actor(w http.ResponseWriter, r *http.Request) (service.
 	}
 	return service.ActorContext{UserID: claims.UserID, Role: claims.Role}, true
 }
+
+type PreviewPaymentRequest struct {
+	PlanID int64 `json:"plan_id"`
+}
+
+func (h *PaymentHandler) Preview(w http.ResponseWriter, r *http.Request) {
+	actor, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	var req PreviewPaymentRequest
+	if err := httputil.DecodeJSON(r, &req); err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+
+	amount, err := h.svc.PreviewPayment(r.Context(), actor, req.PlanID)
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, map[string]float64{"amount": amount})
+}

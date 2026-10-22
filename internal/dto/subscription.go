@@ -7,9 +7,19 @@ import (
 )
 
 type StartTrialResponse struct {
-	StartDate time.Time `json:"start_date"`
-	EndDate   time.Time `json:"end_date"`
-	Days      int       `json:"days"`
+	IsInTrial     bool      `json:"is_in_trial"`
+	DaysRemaining int       `json:"days_remaining"`
+	TotalDays     int       `json:"total_days"`
+	EndDate       time.Time `json:"end_date"`
+	StartDate     time.Time `json:"start_date"`
+}
+
+type TrialResponse struct {
+	IsInTrial     bool      `json:"is_in_trial"`
+	DaysRemaining int       `json:"days_remaining"`
+	TotalDays     int       `json:"total_days"`
+	EndDate       time.Time `json:"end_date"`
+	StartDate     time.Time `json:"start_date"`
 }
 
 type SubscriptionResponse struct {
@@ -53,10 +63,28 @@ func SubscriptionsFromDomain(items []*domain.Subscription) []SubscriptionRespons
 }
 
 func TrialFromDomain(t *domain.FreeTrial) StartTrialResponse {
-	days := int(t.EndDate.Sub(t.StartDate).Hours() / 24)
+	now := time.Now()
+
+	isInTrial := now.Before(t.EndDate)
+
+	totalDays := int(t.EndDate.Sub(t.StartDate).Hours() / 24)
+	if totalDays < 0 {
+		totalDays = 0
+	}
+
+	var daysRemaining int
+	if isInTrial {
+		daysRemaining = int(t.EndDate.Sub(now).Hours() / 24)
+		if daysRemaining < 0 {
+			daysRemaining = 0
+		}
+	}
+
 	return StartTrialResponse{
-		StartDate: t.StartDate,
-		EndDate:   t.EndDate,
-		Days:      days,
+		IsInTrial:     isInTrial,
+		DaysRemaining: daysRemaining,
+		TotalDays:     totalDays,
+		EndDate:       t.EndDate,
+		StartDate:     t.StartDate,
 	}
 }
