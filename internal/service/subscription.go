@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Hisaalu/rogele/internal/domain"
@@ -156,13 +157,21 @@ func (s *SubscriptionService) ActivateFromPayment(
 ) (*domain.Subscription, error) {
 	now := time.Now()
 
-	if existing, err := s.subs.GetActiveByUser(ctx, userID); err == nil {
-		newEnd := existing.EndDate
-		if newEnd.Before(now) {
-			newEnd = now
+	planTypeStr := strings.ToLower(plan.Name)
+	if planTypeStr == "" {
+		planTypeStr = "monthly"
+		if plan.DurationDays >= 365 {
+			planTypeStr = "yearly"
+		} else if plan.DurationDays >= 100 {
+			planTypeStr = "termly"
 		}
-		newEnd = newEnd.AddDate(0, 0, plan.DurationDays)
-		existing.EndDate = newEnd
+	}
+
+	if existing, err := s.subs.GetActiveByUser(ctx, userID); err == nil {
+		existing.PlanType = domain.SubscriptionPlanType(planTypeStr)
+		existing.Amount = &plan.Price
+		existing.StartDate = now
+		existing.EndDate = now.AddDate(0, 0, plan.DurationDays)
 		existing.TransactionID = &transactionID
 		existing.PaymentMethod = &paymentMethod
 		if err := s.subs.Update(ctx, existing); err != nil {
@@ -176,18 +185,13 @@ func (s *SubscriptionService) ActivateFromPayment(
 	uid := userID
 	sub := &domain.Subscription{
 		UserID:        &uid,
-		PlanType:      domain.PlanMonthly,
+		PlanType:      domain.SubscriptionPlanType(planTypeStr),
 		Amount:        &plan.Price,
 		StartDate:     now,
 		EndDate:       now.AddDate(0, 0, plan.DurationDays),
 		PaymentMethod: &paymentMethod,
 		TransactionID: &transactionID,
 		Status:        domain.SubscriptionActive,
-	}
-	if plan.DurationDays >= 365 {
-		sub.PlanType = domain.PlanYearly
-	} else if plan.DurationDays >= 100 {
-		sub.PlanType = domain.PlanTermly
 	}
 	return s.subs.Create(ctx, sub)
 }
