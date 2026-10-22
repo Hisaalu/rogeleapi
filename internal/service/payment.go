@@ -316,7 +316,7 @@ func (s *PaymentService) notifyPaymentStatus(ctx context.Context, p *domain.Paym
 		if p.Amount != nil {
 			amount = *p.Amount
 		}
-		message = fmt.Sprintf("Your payment of %s %.2f was successful.", s.currency, amount)
+		message = fmt.Sprintf("Your payment of UGX %.2f was successful.", amount)
 	case domain.PaymentFailed:
 		title = "Payment failed"
 		message = "Your recent payment did not go through. Please try again."
