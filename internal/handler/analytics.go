@@ -34,6 +34,19 @@ func (h *AnalyticsHandler) requireAdmin(w http.ResponseWriter, r *http.Request) 
 	return true
 }
 
+func (h *AnalyticsHandler) requireAuth(w http.ResponseWriter, r *http.Request) bool {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		httputil.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")
+		return false
+	}
+	if claims.Role != domain.RoleAdmin && claims.Role != domain.RoleTeacher {
+		httputil.Error(w, http.StatusForbidden, "FORBIDDEN", "teacher or admin only")
+		return false
+	}
+	return true
+}
+
 func (h *AnalyticsHandler) parseRange(w http.ResponseWriter, r *http.Request) (service.DateRange, bool) {
 	dr := service.DefaultRange()
 
@@ -65,7 +78,7 @@ func (h *AnalyticsHandler) parseRange(w http.ResponseWriter, r *http.Request) (s
 }
 
 func (h *AnalyticsHandler) EnrollmentTrend(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdmin(w, r) {
+	if !h.requireAuth(w, r) {
 		return
 	}
 	interval := r.URL.Query().Get("interval")
@@ -107,7 +120,7 @@ func (h *AnalyticsHandler) RevenueSeries(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *AnalyticsHandler) ScoreDistribution(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdmin(w, r) {
+	if !h.requireAuth(w, r) {
 		return
 	}
 	result, err := h.svc.ScoreDistribution(r.Context())
@@ -153,7 +166,7 @@ func (h *AnalyticsHandler) SignupDates(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AnalyticsHandler) LearnerSignals(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdmin(w, r) {
+	if !h.requireAuth(w, r) {
 		return
 	}
 	out, err := h.svc.LearnerSignals(r.Context())

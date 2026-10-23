@@ -272,7 +272,6 @@ async def activity_heatmap(
     except GoAPIError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
-    # Build the empty grid up front. Every cell is an int.
     grid: list[list[int]] = [[0] * 24 for _ in range(7)]
 
     if not isinstance(events, list) or not events:
@@ -280,7 +279,7 @@ async def activity_heatmap(
 
     df = pd.DataFrame(events)
     df["created_at"] = pd.to_datetime(df["created_at"], utc=True)
-    df["dow"] = df["created_at"].dt.dayofweek  # Monday=0, Sunday=6
+    df["dow"] = df["created_at"].dt.dayofweek  
     df["hour"] = df["created_at"].dt.hour
 
     counts = df.groupby(["dow", "hour"]).size()
