@@ -145,17 +145,17 @@ func (s *AuthService) Login(ctx context.Context, in LoginInput) (*AuthResult, er
 	u, err := s.users.GetByEmail(ctx, in.Email)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, fmt.Errorf("%w: invalid credentials", domain.ErrUnauthorized)
+			return nil, fmt.Errorf("%w: Invalid Email/Password!", domain.ErrUnauthorized)
 		}
 		return nil, err
 	}
 
 	if !u.IsActive || u.IsSuspended {
-		return nil, fmt.Errorf("%w: account is disabled", domain.ErrForbidden)
+		return nil, fmt.Errorf("%w: Account is disabled!", domain.ErrForbidden)
 	}
 
 	if err := auth.CheckPassword(u.Password, in.Password); err != nil {
-		return nil, fmt.Errorf("%w: invalid credentials", domain.ErrUnauthorized)
+		return nil, fmt.Errorf("%w: Invalid Email/Password!", domain.ErrUnauthorized)
 	}
 
 	_ = s.users.UpdateLastLogin(ctx, u.ID)
