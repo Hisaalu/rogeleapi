@@ -63,8 +63,9 @@ Long-running work (email delivery, expiry reminders) is handled by background
 workers inside the same process. Work is queued in PostgreSQL so the HTTP layer
 never blocks on network I/O.
 
-All clients — web, mobile, analytics — communicate exclusively with the API.
-No client connects directly to the database.
+The Python analytics service reads from the same database and provides
+aggregated insights (at-risk learners, enrollment trends, score distribution)
+to the web client.
 
 ## Requirements
 
@@ -291,6 +292,7 @@ must include `Authorization: Bearer <access_token>`.
 | GET | /payments/history | List the caller's payment history |
 | GET | /payments/all | List all (admin) |
 | GET | /payments/{id}/status | Retrieve payment status |
+| POST | /payments/preview | Calculate prorated upgrade balance |
 
 ### Notifications
 
@@ -396,6 +398,10 @@ Three layers:
    homework, and quizzes. Admins may modify anything. Learners may only read
    resources matching their class.
 
+A service token can be generated for internal use (analytics, public stats).
+This token has `role: admin` and is used by the web client to fetch public data
+without requiring a user session.
+
 ## File Uploads
 
 Files go directly from client to Cloudflare R2 using presigned URLs. The API
@@ -432,8 +438,8 @@ On success, the API activates or extends the subscription, writes to
 notification. Failed payments are recorded with status `failed` and also emit
 a notification.
 
-Airtel support is planned; the provider interface is in place and credentials
-are required to enable it.
+The `/payments/preview` endpoint calculates the prorated balance for plan
+upgrades, so the web client can display the exact amount before payment.
 
 ## Notifications
 
