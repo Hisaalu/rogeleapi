@@ -358,15 +358,49 @@ func (s *QuizService) StartAttempt(ctx context.Context, quizID int64, actor Acto
 		return nil, fmt.Errorf("%w: quiz has ended", domain.ErrForbidden)
 	}
 
-	if existing, err := s.quizzes.GetInProgressAttempt(ctx, quizID, actor.UserID); err == nil {
+		if existing, err := s.quizzes.GetInProgressAttempt(ctx, quizID, actor.UserID); err == nil {
 		if q.TimeLimit != nil && *q.TimeLimit > 0 {
 			started := existing.StartedAt.UTC()
 			deadline := started.Add(time.Duration(*q.TimeLimit) * time.Minute)
+			
 			if time.Now().UTC().After(deadline) {
 				existing.Status = domain.QuizAttemptExpired
 				completed := time.Now().UTC()
 				existing.CompletedAt = &completed
+				
+				savedAnswers, _ := s.quizzes.ListAnswers(ctx, existing.ID)
+				questions, _ := s.quizzes.ListQuestions(ctx, *existing.QuizID)
+				
+				correct := 0
+				qMap := make(map[int64]*domain.QuizQuestion)
+				for _, question := range questions {
+					qMap[question.ID] = question
+				}
+
+				for _, ans := range savedAnswers {
+					if question, ok := qMap[ans.QuestionID]; ok {
+						if ans.SelectedAnswer != nil && question.CorrectAnswer != nil {
+							letter := answerLetter(*ans.SelectedAnswer)
+							if letter != "" && letter == *question.CorrectAnswer {
+								correct++
+							}
+						}
+					}
+				}
+
+				totalQuestions := len(questions)
+				score := 0
+				if totalQuestions > 0 {
+					score = correct * 100 / totalQuestions
+				}
+				
+				existing.Score = &score
+				existing.TotalQuestions = &totalQuestions
+				existing.CorrectAnswers = &correct
+				
 				_ = s.quizzes.UpdateAttempt(ctx, existing)
+				
+				return nil, fmt.Errorf("%w: your previous attempt expired and was auto-submitted", domain.ErrForbidden)
 			} else {
 				return existing, nil
 			}
@@ -627,4 +661,49 @@ func (s *QuizService) GetGlobalAverageScore(ctx context.Context) (int, error) {
 
 func (s *QuizService) GetQuizPerformanceByDay(ctx context.Context, days int) ([]repository.DailyPerformance, error) {
 	return s.quizzes.GetQuizPerformanceByDay(ctx, days)
+}
+
+func (s *QuizService) SaveSingleAnswer(ctx context.Context, attemptID int64, actor ActorContext, questionID int64, selectedAnswer *int) error {
+	a, err := s.quizzes.GetAttempt(ctx, attemptID)
+	if err != nil {
+		return err
+	}
+	if a.UserID == nil || *a.UserID != actor.UserID {
+		return domain.ErrForbidden
+	}
+	if a.Status != domain.QuizAttemptInProgress {
+		return fmt.Errorf("%w: attempt is not in progress", domain.ErrInvalidInput)
+	}
+	if a.QuizID == nil {
+		return domain.ErrInternal
+	}
+
+	questions, err := s.quizzes.ListQuestions(ctx, *a.QuizID)
+	if err != nil {
+		return err
+	}
+
+	isCorrect := false
+	found := false
+	for _, q := range questions {
+		if q.ID == questionID {
+			found = true
+			if selectedAnswer != nil && q.CorrectAnswer != nil {
+				letter := answerLetter(*selectedAnswer)
+				isCorrect = letter != "" && letter == *q.CorrectAnswer
+			}
+			break
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("%w: question does not belong to this quiz", domain.ErrInvalidInput)
+	}
+
+	return s.quizzes.SaveAnswer(ctx, &domain.QuizAttemptAnswer{
+		AttemptID:      attemptID,
+		QuestionID:     questionID,
+		SelectedAnswer: selectedAnswer,
+		IsCorrect:      isCorrect,
+	})
 }

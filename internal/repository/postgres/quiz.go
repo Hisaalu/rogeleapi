@@ -352,11 +352,22 @@ func (r *QuizRepo) ListAttemptsByUser(ctx context.Context, userID int64) ([]*dom
 }
 
 func (r *QuizRepo) SaveAnswer(ctx context.Context, a *domain.QuizAttemptAnswer) error {
-	_, err := r.db.ExecContext(ctx, `
+	query := `
 		INSERT INTO quiz_attempt_answers (attempt_id, question_id, selected_answer, is_correct)
-		VALUES ($1,$2,$3,$4)
-		ON CONFLICT DO NOTHING
-	`, a.AttemptID, a.QuestionID, a.SelectedAnswer, a.IsCorrect)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (attempt_id, question_id) DO UPDATE 
+		SET selected_answer = EXCLUDED.selected_answer,
+		    is_correct = EXCLUDED.is_correct
+	`
+	_, err := r.db.ExecContext(ctx, query, a.AttemptID, a.QuestionID, a.SelectedAnswer, a.IsCorrect)
+	if err != nil {
+		return dberr.Translate(fmt.Errorf("save answer: %w", err))
+	}
+	return nil
+}
+
+func (r *QuizRepo) DeleteAttempt(ctx context.Context, attemptID int64) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM quiz_attempts WHERE id = $1`, attemptID)
 	return dberr.Translate(err)
 }
 

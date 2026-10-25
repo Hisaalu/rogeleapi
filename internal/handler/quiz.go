@@ -566,3 +566,29 @@ func (h *QuizHandler) GetPerformanceChart(w http.ResponseWriter, r *http.Request
 
 	httputil.JSON(w, http.StatusOK, perf)
 }
+
+func (h *QuizHandler) SaveAttemptAnswer(w http.ResponseWriter, r *http.Request) {
+	actor, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	attemptID, err := strconv.ParseInt(chi.URLParam(r, "attemptId"), 10, 64)
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "attempt id must be an integer")
+		return
+	}
+
+	var req dto.AnswerItem
+	if err := httputil.DecodeJSON(r, &req); err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+
+	err = h.svc.SaveSingleAnswer(r.Context(), attemptID, actor, req.QuestionID, req.SelectedAnswer)
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, map[string]string{"status": "saved"})
+}

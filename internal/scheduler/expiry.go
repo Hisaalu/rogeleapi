@@ -227,3 +227,116 @@ func (s *ExpiryScheduler) sendTrialReminders(ctx context.Context) {
 		s.log.Info("trial reminders queued", "count", len(items))
 	}
 }
+
+func (s *ExpiryScheduler) RunQuizExpiry(ctx context.Context) {
+	ticker := time.NewTicker(2 * time.Minute)
+	defer ticker.Stop()
+
+	s.expireQuizzes(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.expireQuizzes(ctx)
+		}
+	}
+}
+
+func (s *ExpiryScheduler) expireQuizzes(ctx context.Context) {
+	query := `
+		SELECT a.id, a.quiz_id
+		FROM quiz_attempts a
+		INNER JOIN quizzes q ON q.id = a.quiz_id
+		WHERE a.status = 'in_progress'
+		  AND q.time_limit IS NOT NULL
+		  AND q.time_limit > 0
+		  AND (a.started_at + (q.time_limit * INTERVAL '1 minute')) < NOW()
+	`
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		s.log.Error("quiz expiry query failed", "error", err)
+		return
+	}
+	defer rows.Close()
+
+	type expiredAttempt struct {
+		AttemptID int64
+		QuizID    int64
+	}
+	var expired []expiredAttempt
+	for rows.Next() {
+		var e expiredAttempt
+		if err := rows.Scan(&e.AttemptID, &e.QuizID); err == nil {
+			expired = append(expired, e)
+		}
+	}
+
+	for _, e := range expired {
+		s.autoSubmitAttempt(ctx, e.AttemptID, e.QuizID)
+	}
+}
+
+func (s *ExpiryScheduler) autoSubmitAttempt(ctx context.Context, attemptID, quizID int64) {
+	qRows, _ := s.db.QueryContext(ctx, `SELECT id, correct_answer FROM quiz_questions WHERE quiz_id = $1`, quizID)
+	defer qRows.Close()
+
+	type qData struct {
+		ID      int64
+		Correct sql.NullString
+	}
+	var questions []qData
+	for qRows.Next() {
+		var q qData
+		if err := qRows.Scan(&q.ID, &q.Correct); err == nil {
+			questions = append(questions, q)
+		}
+	}
+
+	aRows, _ := s.db.QueryContext(ctx, `SELECT question_id, selected_answer FROM quiz_attempt_answers WHERE attempt_id = $1`, attemptID)
+	defer aRows.Close()
+
+	saved := make(map[int64]int)
+	for aRows.Next() {
+		var qID int64
+		var sel sql.NullInt64
+		if err := aRows.Scan(&qID, &sel); err == nil && sel.Valid {
+			saved[qID] = int(sel.Int64)
+		}
+	}
+
+	correctCount := 0
+	for _, q := range questions {
+		if ans, ok := saved[q.ID]; ok && q.Correct.Valid {
+			letter := ""
+			switch ans {
+			case 0: letter = "A"
+			case 1: letter = "B"
+			case 2: letter = "C"
+			case 3: letter = "D"
+			}
+			if letter == q.Correct.String {
+				correctCount++
+			}
+		}
+	}
+
+	total := len(questions)
+	score := 0
+	if total > 0 {
+		score = (correctCount * 100) / total
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE quiz_attempts 
+		SET status = 'expired', score = $1, total_questions = $2, correct_answers = $3, completed_at = NOW() 
+		WHERE id = $4
+	`, score, total, correctCount, attemptID)
+
+	if err != nil {
+		s.log.Error("auto-submit failed", "attempt_id", attemptID, "err", err)
+	} else {
+		s.log.Info("auto-submitted expired quiz", "attempt_id", attemptID, "score", score)
+	}
+}

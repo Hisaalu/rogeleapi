@@ -127,9 +127,15 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Get("/performance-chart", quizHandler.GetPerformanceChart)
 			r.Get("/my-attempts", quizHandler.ListMyAttempts)
 			r.Post("/", quizHandler.Create)
-			r.Get("/attempts/{attemptId}", quizHandler.GetAttempt)
-			r.Post("/attempts/{attemptId}/submit", quizHandler.SubmitAttempt)
+			
+			r.Route("/attempts/{attemptId}", func(r chi.Router) {
+				r.Get("/", quizHandler.GetAttempt)
+				r.Post("/submit", quizHandler.SubmitAttempt)
+				r.Post("/answers", quizHandler.SaveAttemptAnswer)
+			})
+
 			r.Post("/quizzes/{id}/questions/bulk", quizHandler.AddBulkQuestions)
+			
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", quizHandler.Get)
 				r.Patch("/", quizHandler.Update)
