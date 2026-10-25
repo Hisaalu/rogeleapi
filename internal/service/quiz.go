@@ -417,7 +417,7 @@ func (s *QuizService) StartAttempt(ctx context.Context, quizID int64, actor Acto
 		if completed >= q.MaxAttempts {
 			return nil, fmt.Errorf(
 				"%w: you have used all %d attempts for this quiz",
-				domain.ErrForbidden,
+				domain.ErrInvalidInput,
 				q.MaxAttempts,
 			)
 		}
