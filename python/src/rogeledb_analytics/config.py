@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,8 +13,14 @@ class Settings(BaseSettings):
     analytics_debug: bool = False
     analytics_port: int = 9000
 
-    rogele_api_url: str = "http://localhost:8080"
-    rogele_service_token: str = ""
+    rogele_api_url: str = Field(
+        default="http://localhost:8080", 
+        validation_alias="ROGELEDB_API_URL"
+    )
+    rogele_service_token: str = Field(
+        default="", 
+        validation_alias="ROGELEDB_SERVICE_TOKEN"
+    )
 
     http_timeout: int = 30
 

@@ -1,0 +1,7 @@
+.git
+.env
+.env.local
+bin/
+*.exe
+python/.venv/
+python/__pycache__/

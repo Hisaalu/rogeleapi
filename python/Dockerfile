@@ -1,28 +1,16 @@
-# syntax=docker/dockerfile:1.7
+FROM python:3.15-slim
 
-FROM python:3.12-slim AS base
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-ENV UV_COMPILE_BYTECODE=1
-ENV UV_LINK_MODE=copy
-ENV UV_PYTHON_DOWNLOADS=never
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
 WORKDIR /app
 
-FROM base AS deps
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --locked --no-install-project --no-dev
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --frozen --no-dev
 
-FROM base AS runtime
-COPY --from=deps /app/.venv /app/.venv
+COPY src ./src
+
+ENV PYTHONPATH=/app/src
 ENV PATH="/app/.venv/bin:$PATH"
-ENV PYTHONUNBUFFERED=1
-
-COPY src/ /app/src/
-COPY pyproject.toml uv.lock /app/
-
-RUN uv sync --locked --no-dev --no-editable
 
 EXPOSE 9000
 
