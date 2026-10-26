@@ -151,7 +151,7 @@ func (s *AuthService) Login(ctx context.Context, in LoginInput) (*AuthResult, er
 	}
 
 	if !u.IsActive || u.IsSuspended {
-		return nil, fmt.Errorf("%w: Account is disabled!", domain.ErrForbidden)
+		return nil, fmt.Errorf("%w: Your account is suspended!", domain.ErrForbidden)
 	}
 
 	if err := auth.CheckPassword(u.Password, in.Password); err != nil {
@@ -178,7 +178,7 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*AuthRe
 		return nil, err
 	}
 	if !u.IsActive || u.IsSuspended {
-		return nil, fmt.Errorf("%w: account is disabled", domain.ErrForbidden)
+		return nil, fmt.Errorf("%w: Your account is suspended!", domain.ErrForbidden)
 	}
 
 	return s.issueTokens(u)
