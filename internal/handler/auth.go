@@ -1,9 +1,10 @@
 package handler
 
 import (
-	"golang.org/x/crypto/bcrypt"
 	"log/slog"
 	"net/http"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/Hisaalu/rogele/internal/auth"
 	"github.com/Hisaalu/rogele/internal/domain"
@@ -179,7 +180,6 @@ func (h *AuthHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ADDED: Bio, Qualification, Specialization
 	var req struct {
 		FirstName      *string `json:"first_name,omitempty"`
 		LastName       *string `json:"last_name,omitempty"`
