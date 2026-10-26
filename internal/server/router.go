@@ -73,6 +73,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 				r.Use(middleware.Authenticate(deps.Tokens))
 				r.Get("/me", authHandler.Me)
 				r.Post("/change-password", authHandler.ChangePassword)
+				r.Delete("/account", authHandler.DeleteAccount)
 			})
 		})
 
@@ -127,7 +128,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Get("/performance-chart", quizHandler.GetPerformanceChart)
 			r.Get("/my-attempts", quizHandler.ListMyAttempts)
 			r.Post("/", quizHandler.Create)
-			
+
 			r.Route("/attempts/{attemptId}", func(r chi.Router) {
 				r.Get("/", quizHandler.GetAttempt)
 				r.Post("/submit", quizHandler.SubmitAttempt)
@@ -135,7 +136,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 			})
 
 			r.Post("/quizzes/{id}/questions/bulk", quizHandler.AddBulkQuestions)
-			
+
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", quizHandler.Get)
 				r.Patch("/", quizHandler.Update)

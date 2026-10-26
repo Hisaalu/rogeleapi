@@ -279,3 +279,19 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 
 	httputil.JSON(w, http.StatusOK, map[string]string{"message": "password updated successfully"})
 }
+
+func (h *AuthHandler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		httputil.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")
+		return
+	}
+
+	if err := h.users.Delete(r.Context(), claims.UserID); err != nil {
+		h.log.Error("failed to delete account", "user_id", claims.UserID, "error", err)
+		httputil.Error(w, http.StatusInternalServerError, "DELETE_FAILED", "Failed to delete account")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
