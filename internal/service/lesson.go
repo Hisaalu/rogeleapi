@@ -174,7 +174,7 @@ func (s *LessonService) Delete(ctx context.Context, id int64, actor ActorContext
 			if m.FilePath == nil || *m.FilePath == "" {
 				continue
 			}
-			key := extractR2Key(*m.FilePath, s.r2.BaseURL())
+			key := s.r2.ExtractKey(*m.FilePath)
 			if key != "" {
 				s.log.Info("deleting material on lesson delete", "key", key)
 				if delErr := s.r2.DeleteObject(ctx, key); delErr != nil {
@@ -318,7 +318,7 @@ func (s *LessonService) DeleteMaterial(ctx context.Context, materialID int64, ac
 	}
 
 	if m.FilePath != nil && *m.FilePath != "" && s.r2 != nil {
-		key := extractR2Key(*m.FilePath, s.r2.BaseURL())
+		key := s.r2.ExtractKey(*m.FilePath)
 		if key != "" {
 			s.log.Info("deleting material", "key", key)
 			if delErr := s.r2.DeleteObject(ctx, key); delErr != nil {
@@ -418,18 +418,4 @@ func canEditLesson(l *domain.Lesson, actor ActorContext) error {
 		return fmt.Errorf("%w: teachers can only modify their own lessons", domain.ErrForbidden)
 	}
 	return fmt.Errorf("%w: insufficient role", domain.ErrForbidden)
-}
-
-func extractR2Key(filePath string, baseURL string) string {
-	if filePath == "" {
-		return ""
-	}
-
-	if strings.HasPrefix(filePath, "http://") || strings.HasPrefix(filePath, "https://") {
-		cleanBase := strings.TrimSuffix(baseURL, "/")
-		trimmed := strings.TrimPrefix(filePath, cleanBase)
-		return strings.TrimPrefix(trimmed, "/")
-	}
-
-	return strings.TrimPrefix(filePath, "/")
 }

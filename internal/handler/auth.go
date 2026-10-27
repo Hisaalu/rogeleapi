@@ -13,12 +13,14 @@ import (
 	"github.com/Hisaalu/rogele/internal/repository"
 	"github.com/Hisaalu/rogele/internal/server/middleware"
 	"github.com/Hisaalu/rogele/internal/service"
+	"github.com/Hisaalu/rogele/internal/storage"
 )
 
 type AuthHandler struct {
 	authSvc *service.AuthService
 	users   repository.UserRepository
 	tokens  *auth.TokenManager
+	r2      *storage.R2Client
 	log     *slog.Logger
 }
 
@@ -26,12 +28,14 @@ func NewAuthHandler(
 	authSvc *service.AuthService,
 	users repository.UserRepository,
 	tokens *auth.TokenManager,
+	r2 *storage.R2Client,
 	log *slog.Logger,
 ) *AuthHandler {
 	return &AuthHandler{
 		authSvc: authSvc,
 		users:   users,
 		tokens:  tokens,
+		r2:      r2,
 		log:     log,
 	}
 }
@@ -201,6 +205,18 @@ func (h *AuthHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		httputil.DomainError(w, err, h.log)
 		return
+	}
+
+	if req.ProfilePhoto != nil && u.ProfilePhoto != nil && *u.ProfilePhoto != *req.ProfilePhoto {
+		if h.r2 != nil {
+			key := h.r2.ExtractKey(*u.ProfilePhoto)
+			if key != "" {
+				h.log.Info("deleting old profile photo", "key", key)
+				if delErr := h.r2.DeleteObject(r.Context(), key); delErr != nil {
+					h.log.Error("failed to delete old photo", "error", delErr)
+				}
+			}
+		}
 	}
 
 	if req.FirstName != nil {

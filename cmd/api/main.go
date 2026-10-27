@@ -79,6 +79,22 @@ func run() error {
 	)
 	serviceTokenHandler := handler.NewServiceTokenHandler(tokenManager, log)
 
+	var r2Client *storage.R2Client
+	if cfg.R2.Enabled() {
+		r2Client, err = storage.NewR2Client(ctx, cfg.R2)
+		if err != nil {
+			return fmt.Errorf("init r2: %w", err)
+		}
+	}
+
+	var uploadHandler *handler.UploadHandler
+	if r2Client != nil {
+		uploadHandler = handler.NewUploadHandler(r2Client, log)
+		log.Info("r2 storage enabled", "bucket", cfg.R2.Bucket)
+	} else {
+		log.Warn("r2 storage is not configured")
+	}
+
 	var sender mailer.Sender
 	if cfg.Email.Enabled() {
 		sender = mailer.NewResendSender(cfg.Email.ResendAPIKey, cfg.Email.From, cfg.Email.ReplyTo)
@@ -121,16 +137,7 @@ func run() error {
 	)
 
 	userSvc := service.NewUserService(repos.User)
-	var r2Client *storage.R2Client
-	if cfg.R2.Enabled() {
-		var err error
-		r2Client, err = storage.NewR2Client(ctx, cfg.R2)
-		if err != nil {
-			return fmt.Errorf("init r2: %w", err)
-		}
-	}
-
-	lessonSvc := service.NewLessonService(repos.Lesson, repos.User, notificationSvc, activitySvc, r2Client, log)	
+	lessonSvc := service.NewLessonService(repos.Lesson, repos.User, notificationSvc, activitySvc, r2Client, log)
 	homeworkSvc := service.NewHomeworkService(repos.Homework, repos.User, notificationSvc, activitySvc, r2Client, log)
 	quizSvc := service.NewQuizService(repos.Quiz, repos.User, notificationSvc, activitySvc)
 
@@ -160,14 +167,6 @@ func run() error {
 
 	crudRepo := crud.NewRepository(database)
 
-	var uploadHandler *handler.UploadHandler
-	if r2Client != nil {
-		uploadHandler = handler.NewUploadHandler(r2Client, log)
-		log.Info("r2 storage enabled", "bucket", cfg.R2.Bucket)
-	} else {
-		log.Warn("r2 storage is not configured")
-	}
-
 	configHandler := handler.NewConfigHandler(settingsRepo, database, log)
 	adminHandler := handler.NewAdminHandler(adminStatsRepo, log)
 	adminUserHandler := handler.NewAdminUserHandler(
@@ -188,6 +187,7 @@ func run() error {
 		DB:                  database,
 		Repos:               repos,
 		Tokens:              tokenManager,
+		R2:                  r2Client,
 		AuthSvc:             authSvc,
 		UserSvc:             userSvc,
 		LessonSvc:           lessonSvc,

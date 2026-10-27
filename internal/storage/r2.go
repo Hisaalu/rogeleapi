@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -71,4 +72,16 @@ func (c *R2Client) DeleteObject(ctx context.Context, key string) error {
 		return fmt.Errorf("delete r2 object %q: %w", key, err)
 	}
 	return nil
+}
+
+func (c *R2Client) ExtractKey(filePath string) string {
+	if filePath == "" {
+		return ""
+	}
+	if strings.HasPrefix(filePath, "http://") || strings.HasPrefix(filePath, "https://") {
+		cleanBase := strings.TrimSuffix(c.publicURL, "/")
+		trimmed := strings.TrimPrefix(filePath, cleanBase)
+		return strings.TrimPrefix(trimmed, "/")
+	}
+	return strings.TrimPrefix(filePath, "/")
 }

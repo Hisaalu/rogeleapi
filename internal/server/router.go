@@ -14,6 +14,7 @@ import (
 	"github.com/Hisaalu/rogele/internal/repository"
 	"github.com/Hisaalu/rogele/internal/server/middleware"
 	"github.com/Hisaalu/rogele/internal/service"
+	"github.com/Hisaalu/rogele/internal/storage" 
 )
 
 type RouterDeps struct {
@@ -22,6 +23,7 @@ type RouterDeps struct {
 	DB                  *sql.DB
 	Repos               *repository.Repositories
 	Tokens              *auth.TokenManager
+	R2                  *storage.R2Client
 	AuthSvc             *service.AuthService
 	UserSvc             *service.UserService
 	LessonSvc           *service.LessonService
@@ -60,7 +62,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Get("/config/classes", deps.ConfigHandler.PublicClasses)
 		}
 
-		authHandler := handler.NewAuthHandler(deps.AuthSvc, deps.Repos.User, deps.Tokens, deps.Log)
+		authHandler := handler.NewAuthHandler(deps.AuthSvc, deps.Repos.User, deps.Tokens, deps.R2, deps.Log)
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/register", authHandler.Register)
 			r.Post("/login", authHandler.Login)

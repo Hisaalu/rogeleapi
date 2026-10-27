@@ -184,7 +184,7 @@ func (s *HomeworkService) Delete(ctx context.Context, id int64, actor ActorConte
 	attachments, _ := s.repo.ListAttachments(ctx, id)
 	for _, a := range attachments {
 		if a.FilePath != "" && s.r2 != nil {
-			key := extractR2Key(a.FilePath, s.r2.BaseURL())
+			key := s.r2.ExtractKey(a.FilePath)
 			if key != "" {
 				s.log.Info("deleting homework attachment on homework delete", "key", key)
 				_ = s.r2.DeleteObject(ctx, key)
@@ -197,7 +197,7 @@ func (s *HomeworkService) Delete(ctx context.Context, id int64, actor ActorConte
 		files, _ := s.repo.ListSubmissionFiles(ctx, sub.ID)
 		for _, f := range files {
 			if f.FilePath != "" && s.r2 != nil {
-				key := extractR2Key(f.FilePath, s.r2.BaseURL())
+				key := s.r2.ExtractKey(f.FilePath)
 				if key != "" {
 					s.log.Info("deleting submission file on homework delete", "key", key)
 					_ = s.r2.DeleteObject(ctx, key)
@@ -247,7 +247,7 @@ func (s *HomeworkService) DeleteAttachment(ctx context.Context, homeworkID, atta
 	}
 
 	if a.FilePath != "" && s.r2 != nil {
-		key := extractR2Key(a.FilePath, s.r2.BaseURL())
+		key := s.r2.ExtractKey(a.FilePath)
 		if key != "" {
 			s.log.Info("deleting homework attachment", "key", key)
 			if delErr := s.r2.DeleteObject(ctx, key); delErr != nil {
@@ -384,7 +384,7 @@ func (s *HomeworkService) DeleteSubmission(ctx context.Context, submissionID int
 	files, _ := s.repo.ListSubmissionFiles(ctx, submissionID)
 	for _, f := range files {
 		if f.FilePath != "" && s.r2 != nil {
-			key := extractR2Key(f.FilePath, s.r2.BaseURL())
+			key := s.r2.ExtractKey(f.FilePath)
 			if key != "" {
 				s.log.Info("deleting submission file on submission delete", "key", key)
 				_ = s.r2.DeleteObject(ctx, key)
@@ -436,7 +436,7 @@ func (s *HomeworkService) DeleteSubmissionFile(ctx context.Context, fileID int64
 	}
 
 	if f.FilePath != "" && s.r2 != nil {
-		key := extractR2Key(f.FilePath, s.r2.BaseURL())
+		key := s.r2.ExtractKey(f.FilePath)
 		if key != "" {
 			s.log.Info("deleting submission file", "key", key)
 			if delErr := s.r2.DeleteObject(ctx, key); delErr != nil {
