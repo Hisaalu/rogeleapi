@@ -81,6 +81,7 @@ type HomeworkRepository interface {
 	List(ctx context.Context, f HomeworkFilter) ([]*domain.Homework, error)
 
 	ListAttachments(ctx context.Context, homeworkID int64) ([]*domain.HomeworkAttachment, error)
+	GetAttachmentByID(ctx context.Context, id int64) (*domain.HomeworkAttachment, error) // ADDED
 	CreateAttachment(ctx context.Context, a *domain.HomeworkAttachment) (*domain.HomeworkAttachment, error)
 	DeleteAttachment(ctx context.Context, id int64) error
 
@@ -93,6 +94,7 @@ type HomeworkRepository interface {
 	DeleteSubmission(ctx context.Context, id int64) error
 
 	ListSubmissionFiles(ctx context.Context, submissionID int64) ([]*domain.HomeworkSubmissionFile, error)
+	GetSubmissionFileByID(ctx context.Context, id int64) (*domain.HomeworkSubmissionFile, error) // ADDED
 	CreateSubmissionFile(ctx context.Context, f *domain.HomeworkSubmissionFile) (*domain.HomeworkSubmissionFile, error)
 	DeleteSubmissionFile(ctx context.Context, id int64) error
 }

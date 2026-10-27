@@ -131,7 +131,7 @@ func run() error {
 	}
 
 	lessonSvc := service.NewLessonService(repos.Lesson, repos.User, notificationSvc, activitySvc, r2Client, log)	
-	homeworkSvc := service.NewHomeworkService(repos.Homework, repos.User, notificationSvc, activitySvc)
+	homeworkSvc := service.NewHomeworkService(repos.Homework, repos.User, notificationSvc, activitySvc, r2Client, log)
 	quizSvc := service.NewQuizService(repos.Quiz, repos.User, notificationSvc, activitySvc)
 
 	providers := payments.NewRegistry(cfg.Momo, cfg.Airtel)

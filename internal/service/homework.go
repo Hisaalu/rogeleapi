@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/Hisaalu/rogele/internal/domain"
 	"github.com/Hisaalu/rogele/internal/repository"
+	"github.com/Hisaalu/rogele/internal/storage"
 )
 
 type CreateHomeworkInput struct {
@@ -31,6 +33,8 @@ type HomeworkService struct {
 	users         repository.UserRepository
 	notifications *NotificationService
 	activity      *ActivityService
+	r2            *storage.R2Client
+	log           *slog.Logger
 }
 
 func NewHomeworkService(
@@ -38,12 +42,16 @@ func NewHomeworkService(
 	users repository.UserRepository,
 	notifications *NotificationService,
 	activity *ActivityService,
+	r2 *storage.R2Client,
+	log *slog.Logger,
 ) *HomeworkService {
 	return &HomeworkService{
 		repo:          repo,
 		users:         users,
 		notifications: notifications,
 		activity:      activity,
+		r2:            r2,
+		log:           log,
 	}
 }
 
@@ -172,6 +180,32 @@ func (s *HomeworkService) Delete(ctx context.Context, id int64, actor ActorConte
 	if err := s.canEdit(hw, actor); err != nil {
 		return err
 	}
+
+	attachments, _ := s.repo.ListAttachments(ctx, id)
+	for _, a := range attachments {
+		if a.FilePath != "" && s.r2 != nil {
+			key := extractR2Key(a.FilePath, s.r2.BaseURL())
+			if key != "" {
+				s.log.Info("deleting homework attachment on homework delete", "key", key)
+				_ = s.r2.DeleteObject(ctx, key)
+			}
+		}
+	}
+
+	submissions, _ := s.repo.ListSubmissions(ctx, id)
+	for _, sub := range submissions {
+		files, _ := s.repo.ListSubmissionFiles(ctx, sub.ID)
+		for _, f := range files {
+			if f.FilePath != "" && s.r2 != nil {
+				key := extractR2Key(f.FilePath, s.r2.BaseURL())
+				if key != "" {
+					s.log.Info("deleting submission file on homework delete", "key", key)
+					_ = s.r2.DeleteObject(ctx, key)
+				}
+			}
+		}
+	}
+
 	return s.repo.Delete(ctx, id)
 }
 
@@ -206,6 +240,22 @@ func (s *HomeworkService) DeleteAttachment(ctx context.Context, homeworkID, atta
 	if err := s.canEdit(hw, actor); err != nil {
 		return err
 	}
+
+	a, err := s.repo.GetAttachmentByID(ctx, attachmentID)
+	if err != nil {
+		return err
+	}
+
+	if a.FilePath != "" && s.r2 != nil {
+		key := extractR2Key(a.FilePath, s.r2.BaseURL())
+		if key != "" {
+			s.log.Info("deleting homework attachment", "key", key)
+			if delErr := s.r2.DeleteObject(ctx, key); delErr != nil {
+				return fmt.Errorf("failed to delete file from storage: %w", delErr)
+			}
+		}
+	}
+
 	return s.repo.DeleteAttachment(ctx, attachmentID)
 }
 
@@ -301,7 +351,7 @@ func (s *HomeworkService) GradeSubmission(ctx context.Context, submissionID int6
 
 	sub.Grade = &grade
 	sub.Feedback = &feedback
-	sub.Status = domain.HomeworkStatus("graded") // Fix: cast to domain.HomeworkStatus
+	sub.Status = domain.HomeworkStatus("graded")
 
 	if err := s.repo.UpdateSubmission(ctx, sub); err != nil {
 		return nil, err
@@ -329,6 +379,17 @@ func (s *HomeworkService) DeleteSubmission(ctx context.Context, submissionID int
 		}
 	} else if actor.Role != domain.RoleAdmin {
 		return fmt.Errorf("%w: insufficient permissions", domain.ErrForbidden)
+	}
+
+	files, _ := s.repo.ListSubmissionFiles(ctx, submissionID)
+	for _, f := range files {
+		if f.FilePath != "" && s.r2 != nil {
+			key := extractR2Key(f.FilePath, s.r2.BaseURL())
+			if key != "" {
+				s.log.Info("deleting submission file on submission delete", "key", key)
+				_ = s.r2.DeleteObject(ctx, key)
+			}
+		}
 	}
 
 	return s.repo.DeleteSubmission(ctx, submissionID)
@@ -362,8 +423,28 @@ func (s *HomeworkService) AddSubmissionFile(ctx context.Context, submissionID in
 }
 
 func (s *HomeworkService) DeleteSubmissionFile(ctx context.Context, fileID int64, actor ActorContext) error {
-	// Fix: We can't use GetSubmissionFileByID because it doesn't exist in the repo interface.
-	// For safety, just trust the ID from the handler since the handler checks auth.
+	f, err := s.repo.GetSubmissionFileByID(ctx, fileID)
+	if err != nil {
+		return err
+	}
+
+	sub, err := s.repo.GetSubmissionByID(ctx, f.SubmissionID)
+	if err == nil {
+		if actor.Role == domain.RoleLearner && sub.StudentID != actor.UserID {
+			return fmt.Errorf("%w: you can only delete your own files", domain.ErrForbidden)
+		}
+	}
+
+	if f.FilePath != "" && s.r2 != nil {
+		key := extractR2Key(f.FilePath, s.r2.BaseURL())
+		if key != "" {
+			s.log.Info("deleting submission file", "key", key)
+			if delErr := s.r2.DeleteObject(ctx, key); delErr != nil {
+				return fmt.Errorf("failed to delete file from storage: %w", delErr)
+			}
+		}
+	}
+
 	return s.repo.DeleteSubmissionFile(ctx, fileID)
 }
 
@@ -372,8 +453,6 @@ func (s *HomeworkService) learnerClassID(ctx context.Context, actor ActorContext
 	if err != nil {
 		return nil, err
 	}
-
-	// Fix: u.ClassID is already *int64, so just return it directly
 	return u.ClassID, nil
 }
 

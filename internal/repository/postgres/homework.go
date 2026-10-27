@@ -513,4 +513,56 @@ func scanSubmissionRow(s homeworkScanner) (*domain.HomeworkSubmission, error) {
 	return &sub, nil
 }
 
+func (r *HomeworkRepo) GetAttachmentByID(ctx context.Context, id int64) (*domain.HomeworkAttachment, error) {
+	query := `SELECT ` + homeworkAttachmentColumns + ` FROM homework_attachments WHERE id = $1`
+	var (
+		a        domain.HomeworkAttachment
+		fileType sql.NullString
+		fileSize sql.NullInt64
+	)
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&a.ID, &a.HomeworkID, &a.FileName, &a.FilePath, &fileType, &fileSize, &a.UploadedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	if fileType.Valid {
+		a.FileType = &fileType.String
+	}
+	if fileSize.Valid {
+		s := int(fileSize.Int64)
+		a.FileSize = &s
+	}
+	return &a, nil
+}
+
+func (r *HomeworkRepo) GetSubmissionFileByID(ctx context.Context, id int64) (*domain.HomeworkSubmissionFile, error) {
+	query := `SELECT ` + submissionFileColumns + ` FROM homework_submission_files WHERE id = $1`
+	var (
+		f        domain.HomeworkSubmissionFile
+		fileType sql.NullString
+		fileSize sql.NullInt64
+	)
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&f.ID, &f.SubmissionID, &f.FileName, &f.FilePath, &fileType, &fileSize, &f.UploadedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	if fileType.Valid {
+		f.FileType = &fileType.String
+	}
+	if fileSize.Valid {
+		s := int(fileSize.Int64)
+		f.FileSize = &s
+	}
+	return &f, nil
+}
+
 var _ repository.HomeworkRepository = (*HomeworkRepo)(nil)
