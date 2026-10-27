@@ -53,6 +53,7 @@ type LessonRepository interface {
 	IncrementViews(ctx context.Context, id int64) error
 
 	ListMaterials(ctx context.Context, lessonID int64) ([]*domain.LessonMaterial, error)
+	GetMaterialByID(ctx context.Context, id int64) (*domain.LessonMaterial, error)
 	CreateMaterial(ctx context.Context, m *domain.LessonMaterial) (*domain.LessonMaterial, error)
 	DeleteMaterial(ctx context.Context, id int64) error
 

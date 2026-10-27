@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/Hisaalu/rogele/internal/domain"
 	"github.com/Hisaalu/rogele/internal/repository"
+	"github.com/Hisaalu/rogele/internal/storage"
 )
 
 type CreateLessonInput struct {
@@ -34,6 +36,8 @@ type LessonService struct {
 	users         repository.UserRepository
 	notifications *NotificationService
 	activity      *ActivityService
+	r2            *storage.R2Client
+	log           *slog.Logger
 }
 
 func NewLessonService(
@@ -41,12 +45,16 @@ func NewLessonService(
 	users repository.UserRepository,
 	notifications *NotificationService,
 	activity *ActivityService,
+	r2 *storage.R2Client,
+	log *slog.Logger,
 ) *LessonService {
 	return &LessonService{
 		lessons:       lessons,
 		users:         users,
 		notifications: notifications,
 		activity:      activity,
+		r2:            r2,
+		log:           log,
 	}
 }
 
@@ -159,6 +167,23 @@ func (s *LessonService) Delete(ctx context.Context, id int64, actor ActorContext
 	if err := canEditLesson(l, actor); err != nil {
 		return err
 	}
+
+	materials, err := s.lessons.ListMaterials(ctx, id)
+	if err == nil && s.r2 != nil {
+		for _, m := range materials {
+			if m.FilePath == nil || *m.FilePath == "" {
+				continue
+			}
+			key := extractR2Key(*m.FilePath, s.r2.BaseURL())
+			if key != "" {
+				s.log.Info("deleting material on lesson delete", "key", key)
+				if delErr := s.r2.DeleteObject(ctx, key); delErr != nil {
+					s.log.Error("failed to delete r2 object", "key", key, "error", delErr)
+				}
+			}
+		}
+	}
+
 	return s.lessons.Delete(ctx, id)
 }
 
@@ -274,9 +299,34 @@ func (s *LessonService) AddMaterial(ctx context.Context, lessonID int64, actor A
 }
 
 func (s *LessonService) DeleteMaterial(ctx context.Context, materialID int64, actor ActorContext) error {
-	if actor.Role != domain.RoleAdmin {
-		return fmt.Errorf("%w: only admins can delete materials directly", domain.ErrForbidden)
+	m, err := s.lessons.GetMaterialByID(ctx, materialID)
+	if err != nil {
+		return err
 	}
+
+	if m.LessonID == nil {
+		return fmt.Errorf("%w: material has no lesson", domain.ErrInternal)
+	}
+
+	l, err := s.lessons.GetByID(ctx, *m.LessonID)
+	if err != nil {
+		return err
+	}
+
+	if err := canEditLesson(l, actor); err != nil {
+		return err
+	}
+
+	if m.FilePath != nil && *m.FilePath != "" && s.r2 != nil {
+		key := extractR2Key(*m.FilePath, s.r2.BaseURL())
+		if key != "" {
+			s.log.Info("deleting material", "key", key)
+			if delErr := s.r2.DeleteObject(ctx, key); delErr != nil {
+				return fmt.Errorf("failed to delete file from storage: %w", delErr)
+			}
+		}
+	}
+
 	return s.lessons.DeleteMaterial(ctx, materialID)
 }
 
@@ -368,4 +418,18 @@ func canEditLesson(l *domain.Lesson, actor ActorContext) error {
 		return fmt.Errorf("%w: teachers can only modify their own lessons", domain.ErrForbidden)
 	}
 	return fmt.Errorf("%w: insufficient role", domain.ErrForbidden)
+}
+
+func extractR2Key(filePath string, baseURL string) string {
+	if filePath == "" {
+		return ""
+	}
+
+	if strings.HasPrefix(filePath, "http://") || strings.HasPrefix(filePath, "https://") {
+		cleanBase := strings.TrimSuffix(baseURL, "/")
+		trimmed := strings.TrimPrefix(filePath, cleanBase)
+		return strings.TrimPrefix(trimmed, "/")
+	}
+
+	return strings.TrimPrefix(filePath, "/")
 }

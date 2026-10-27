@@ -16,6 +16,7 @@ type R2Client struct {
 	bucket    string
 	publicURL string
 	presigner *s3.PresignClient
+	client    *s3.Client
 }
 
 func NewR2Client(ctx context.Context, cfg config.R2Config) (*R2Client, error) {
@@ -46,9 +47,28 @@ func NewR2Client(ctx context.Context, cfg config.R2Config) (*R2Client, error) {
 		bucket:    cfg.Bucket,
 		publicURL: cfg.PublicURL,
 		presigner: s3.NewPresignClient(client),
+		client:    client,
 	}, nil
 }
 
 func (c *R2Client) PublicURL(key string) string {
 	return fmt.Sprintf("%s/%s", c.publicURL, key)
+}
+
+func (c *R2Client) BaseURL() string {
+	return c.publicURL
+}
+
+func (c *R2Client) DeleteObject(ctx context.Context, key string) error {
+	if key == "" {
+		return fmt.Errorf("delete r2 object: empty key")
+	}
+	_, err := c.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(c.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return fmt.Errorf("delete r2 object %q: %w", key, err)
+	}
+	return nil
 }

@@ -121,7 +121,16 @@ func run() error {
 	)
 
 	userSvc := service.NewUserService(repos.User)
-	lessonSvc := service.NewLessonService(repos.Lesson, repos.User, notificationSvc, activitySvc)
+	var r2Client *storage.R2Client
+	if cfg.R2.Enabled() {
+		var err error
+		r2Client, err = storage.NewR2Client(ctx, cfg.R2)
+		if err != nil {
+			return fmt.Errorf("init r2: %w", err)
+		}
+	}
+
+	lessonSvc := service.NewLessonService(repos.Lesson, repos.User, notificationSvc, activitySvc, r2Client, log)	
 	homeworkSvc := service.NewHomeworkService(repos.Homework, repos.User, notificationSvc, activitySvc)
 	quizSvc := service.NewQuizService(repos.Quiz, repos.User, notificationSvc, activitySvc)
 
@@ -152,11 +161,7 @@ func run() error {
 	crudRepo := crud.NewRepository(database)
 
 	var uploadHandler *handler.UploadHandler
-	if cfg.R2.Enabled() {
-		r2Client, err := storage.NewR2Client(ctx, cfg.R2)
-		if err != nil {
-			return fmt.Errorf("init r2: %w", err)
-		}
+	if r2Client != nil {
 		uploadHandler = handler.NewUploadHandler(r2Client, log)
 		log.Info("r2 storage enabled", "bucket", cfg.R2.Bucket)
 	} else {

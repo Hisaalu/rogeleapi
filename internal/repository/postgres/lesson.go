@@ -191,6 +191,19 @@ func (r *LessonRepo) ListMaterials(ctx context.Context, lessonID int64) ([]*doma
 	return results, rows.Err()
 }
 
+func (r *LessonRepo) GetMaterialByID(ctx context.Context, id int64) (*domain.LessonMaterial, error) {
+	query := `SELECT ` + materialColumns + ` FROM lesson_materials WHERE id = $1`
+	row := r.db.QueryRowContext(ctx, query, id)
+	m, err := scanMaterial(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	return m, nil
+}
+
 func (r *LessonRepo) CreateMaterial(ctx context.Context, m *domain.LessonMaterial) (*domain.LessonMaterial, error) {
 	query := `
 		INSERT INTO lesson_materials (lesson_id, file_name, file_path, file_type, file_size)
