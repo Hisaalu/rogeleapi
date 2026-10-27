@@ -10,7 +10,7 @@
 .vscode/
 *.swp
 
-# migrations/
+#migrations/
 
 .DS_Store
 

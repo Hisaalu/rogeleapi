@@ -34,9 +34,6 @@ CREATE TYPE public.email_campaigns_recipient_type AS ENUM (
     'custom_emails'
 );
 
-
-ALTER TYPE public.email_campaigns_recipient_type OWNER TO postgres;
-
 --
 -- TOC entry 916 (class 1247 OID 16416)
 -- Name: email_campaigns_status; Type: TYPE; Schema: public; Owner: postgres
@@ -49,9 +46,6 @@ CREATE TYPE public.email_campaigns_status AS ENUM (
     'failed'
 );
 
-
-ALTER TYPE public.email_campaigns_status OWNER TO postgres;
-
 --
 -- TOC entry 919 (class 1247 OID 16426)
 -- Name: email_logs_status; Type: TYPE; Schema: public; Owner: postgres
@@ -62,9 +56,6 @@ CREATE TYPE public.email_logs_status AS ENUM (
     'sent',
     'failed'
 );
-
-
-ALTER TYPE public.email_logs_status OWNER TO postgres;
 
 --
 -- TOC entry 928 (class 1247 OID 16452)
@@ -78,9 +69,6 @@ CREATE TYPE public.homework_submissions_status AS ENUM (
     'graded'
 );
 
-
-ALTER TYPE public.homework_submissions_status OWNER TO postgres;
-
 --
 -- TOC entry 922 (class 1247 OID 16434)
 -- Name: payments_status; Type: TYPE; Schema: public; Owner: postgres
@@ -93,9 +81,6 @@ CREATE TYPE public.payments_status AS ENUM (
     'refunded'
 );
 
-
-ALTER TYPE public.payments_status OWNER TO postgres;
-
 --
 -- TOC entry 925 (class 1247 OID 16444)
 -- Name: quiz_attempts_status; Type: TYPE; Schema: public; Owner: postgres
@@ -107,9 +92,6 @@ CREATE TYPE public.quiz_attempts_status AS ENUM (
     'expired'
 );
 
-
-ALTER TYPE public.quiz_attempts_status OWNER TO postgres;
-
 --
 -- TOC entry 931 (class 1247 OID 16462)
 -- Name: subscriptions_plan_type; Type: TYPE; Schema: public; Owner: postgres
@@ -120,9 +102,6 @@ CREATE TYPE public.subscriptions_plan_type AS ENUM (
     'termly',
     'yearly'
 );
-
-
-ALTER TYPE public.subscriptions_plan_type OWNER TO postgres;
 
 --
 -- TOC entry 934 (class 1247 OID 16470)
@@ -136,9 +115,6 @@ CREATE TYPE public.subscriptions_status AS ENUM (
     'pending'
 );
 
-
-ALTER TYPE public.subscriptions_status OWNER TO postgres;
-
 --
 -- TOC entry 910 (class 1247 OID 16390)
 -- Name: users_role; Type: TYPE; Schema: public; Owner: postgres
@@ -150,9 +126,6 @@ CREATE TYPE public.users_role AS ENUM (
     'learner',
     'external'
 );
-
-
-ALTER TYPE public.users_role OWNER TO postgres;
 
 SET default_tablespace = '';
 
@@ -172,9 +145,6 @@ CREATE TABLE public.activity_logs (
     user_agent text,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
-
-
-ALTER TABLE public.activity_logs OWNER TO postgres;
 
 --
 -- TOC entry 231 (class 1259 OID 16582)
@@ -202,9 +172,6 @@ CREATE TABLE public.bookmarks (
     lesson_id integer,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
-
-
-ALTER TABLE public.bookmarks OWNER TO postgres;
 
 --
 -- TOC entry 229 (class 1259 OID 16570)
@@ -235,9 +202,6 @@ CREATE TABLE public.classes (
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp without time zone
 );
-
-
-ALTER TABLE public.classes OWNER TO postgres;
 
 --
 -- TOC entry 219 (class 1259 OID 16479)
@@ -274,9 +238,6 @@ CREATE TABLE public.email_campaigns (
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     sent_at timestamp without time zone
 );
-
-
-ALTER TABLE public.email_campaigns OWNER TO postgres;
 
 --
 -- TOC entry 5436 (class 0 OID 0)
@@ -329,9 +290,6 @@ CREATE TABLE public.email_logs (
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
 );
 
-
-ALTER TABLE public.email_logs OWNER TO postgres;
-
 --
 -- TOC entry 265 (class 1259 OID 16855)
 -- Name: email_logs_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
@@ -371,9 +329,6 @@ CREATE TABLE public.email_queue (
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
-
-ALTER TABLE public.email_queue OWNER TO postgres;
-
 --
 -- TOC entry 273 (class 1259 OID 17092)
 -- Name: email_queue_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
@@ -386,8 +341,6 @@ CREATE SEQUENCE public.email_queue_id_seq
     NO MAXVALUE
     CACHE 1;
 
-
-ALTER SEQUENCE public.email_queue_id_seq OWNER TO postgres;
 
 --
 -- TOC entry 5438 (class 0 OID 0)
@@ -412,9 +365,6 @@ CREATE TABLE public.email_templates (
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
 );
-
-
-ALTER TABLE public.email_templates OWNER TO postgres;
 
 --
 -- TOC entry 267 (class 1259 OID 16871)
@@ -445,9 +395,6 @@ CREATE TABLE public.free_trials (
     converted_to_subscriber boolean DEFAULT false,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
-
-
-ALTER TABLE public.free_trials OWNER TO postgres;
 
 --
 -- TOC entry 253 (class 1259 OID 16755)
@@ -482,9 +429,6 @@ CREATE TABLE public.homework (
     updated_at timestamp without time zone
 );
 
-
-ALTER TABLE public.homework OWNER TO postgres;
-
 --
 -- TOC entry 236 (class 1259 OID 16616)
 -- Name: homework_attachments; Type: TABLE; Schema: public; Owner: postgres
@@ -499,9 +443,6 @@ CREATE TABLE public.homework_attachments (
     file_size integer,
     uploaded_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
-
-
-ALTER TABLE public.homework_attachments OWNER TO postgres;
 
 --
 -- TOC entry 235 (class 1259 OID 16615)
@@ -548,9 +489,6 @@ CREATE TABLE public.homework_submission_files (
     uploaded_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
-
-ALTER TABLE public.homework_submission_files OWNER TO postgres;
-
 --
 -- TOC entry 239 (class 1259 OID 16648)
 -- Name: homework_submission_files_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
@@ -585,9 +523,6 @@ CREATE TABLE public.homework_submissions (
     updated_at timestamp without time zone
 );
 
-
-ALTER TABLE public.homework_submissions OWNER TO postgres;
-
 --
 -- TOC entry 237 (class 1259 OID 16630)
 -- Name: homework_submissions_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
@@ -618,9 +553,6 @@ CREATE TABLE public.lesson_materials (
     download_count integer DEFAULT 0,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
-
-
-ALTER TABLE public.lesson_materials OWNER TO postgres;
 
 --
 -- TOC entry 227 (class 1259 OID 16557)
@@ -658,9 +590,6 @@ CREATE TABLE public.lessons (
     updated_at timestamp without time zone
 );
 
-
-ALTER TABLE public.lessons OWNER TO postgres;
-
 --
 -- TOC entry 225 (class 1259 OID 16537)
 -- Name: lessons_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
@@ -687,9 +616,6 @@ CREATE TABLE public.notification_reads (
     read_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
-
-ALTER TABLE public.notification_reads OWNER TO postgres;
-
 --
 -- TOC entry 250 (class 1259 OID 16727)
 -- Name: notifications; Type: TABLE; Schema: public; Owner: postgres
@@ -705,9 +631,6 @@ CREATE TABLE public.notifications (
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     user_id integer
 );
-
-
-ALTER TABLE public.notifications OWNER TO postgres;
 
 --
 -- TOC entry 249 (class 1259 OID 16726)
@@ -737,9 +660,6 @@ CREATE TABLE public.password_resets (
     used boolean DEFAULT false,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
-
-
-ALTER TABLE public.password_resets OWNER TO postgres;
 
 --
 -- TOC entry 251 (class 1259 OID 16740)
@@ -776,9 +696,6 @@ CREATE TABLE public.payment_history (
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
-
-ALTER TABLE public.payment_history OWNER TO postgres;
-
 --
 -- TOC entry 259 (class 1259 OID 16802)
 -- Name: payment_history_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
@@ -814,9 +731,6 @@ CREATE TABLE public.payments (
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
-
-ALTER TABLE public.payments OWNER TO postgres;
-
 --
 -- TOC entry 261 (class 1259 OID 16819)
 -- Name: payments_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
@@ -845,9 +759,6 @@ CREATE TABLE public.quiz_attempt_answers (
     is_correct boolean DEFAULT false,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
-
-
-ALTER TABLE public.quiz_attempt_answers OWNER TO postgres;
 
 --
 -- TOC entry 247 (class 1259 OID 16712)
@@ -882,9 +793,6 @@ CREATE TABLE public.quiz_attempts (
     completed_at timestamp with time zone
 );
 
-
-ALTER TABLE public.quiz_attempts OWNER TO postgres;
-
 --
 -- TOC entry 245 (class 1259 OID 16699)
 -- Name: quiz_attempts_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
@@ -918,9 +826,6 @@ CREATE TABLE public.quiz_questions (
     explanation text,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
-
-
-ALTER TABLE public.quiz_questions OWNER TO postgres;
 
 --
 -- TOC entry 243 (class 1259 OID 16685)
@@ -963,9 +868,6 @@ CREATE TABLE public.quizzes (
     status character varying(20) DEFAULT 'draft'::character varying
 );
 
-
-ALTER TABLE public.quizzes OWNER TO postgres;
-
 --
 -- TOC entry 241 (class 1259 OID 16663)
 -- Name: quizzes_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
@@ -995,9 +897,6 @@ CREATE TABLE public.service_tokens (
     revoked_at timestamp with time zone
 );
 
-
-ALTER TABLE public.service_tokens OWNER TO postgres;
-
 --
 -- TOC entry 276 (class 1259 OID 17211)
 -- Name: service_tokens_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
@@ -1010,8 +909,6 @@ CREATE SEQUENCE public.service_tokens_id_seq
     NO MAXVALUE
     CACHE 1;
 
-
-ALTER SEQUENCE public.service_tokens_id_seq OWNER TO postgres;
 
 --
 -- TOC entry 5439 (class 0 OID 0)
@@ -1033,9 +930,6 @@ CREATE TABLE public.sessions (
     last_accessed integer NOT NULL
 );
 
-
-ALTER TABLE public.sessions OWNER TO postgres;
-
 --
 -- TOC entry 271 (class 1259 OID 16896)
 -- Name: settings; Type: TABLE; Schema: public; Owner: postgres
@@ -1048,9 +942,6 @@ CREATE TABLE public.settings (
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
 );
-
-
-ALTER TABLE public.settings OWNER TO postgres;
 
 --
 -- TOC entry 270 (class 1259 OID 16895)
@@ -1084,9 +975,6 @@ CREATE TABLE public.subjects (
     updated_at timestamp without time zone
 );
 
-
-ALTER TABLE public.subjects OWNER TO postgres;
-
 --
 -- TOC entry 223 (class 1259 OID 16521)
 -- Name: subjects_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
@@ -1117,9 +1005,6 @@ CREATE TABLE public.subscription_plans (
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp without time zone
 );
-
-
-ALTER TABLE public.subscription_plans OWNER TO postgres;
 
 --
 -- TOC entry 255 (class 1259 OID 16770)
@@ -1160,9 +1045,6 @@ CREATE TABLE public.subscriptions (
     original_subscription_id integer,
     expiry_reminder_sent boolean DEFAULT false NOT NULL
 );
-
-
-ALTER TABLE public.subscriptions OWNER TO postgres;
 
 --
 -- TOC entry 257 (class 1259 OID 16784)
@@ -1209,9 +1091,6 @@ CREATE TABLE public.users (
     updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     trial_start_date timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
-
-
-ALTER TABLE public.users OWNER TO postgres;
 
 --
 -- TOC entry 221 (class 1259 OID 16493)

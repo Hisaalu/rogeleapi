@@ -18,4 +18,5 @@ RUN curl -L https://github.com/golang-migrate/migrate/releases/download/v4.17.0/
 
 EXPOSE 8080
 
-CMD ["sh", "-c", "migrate -path ./migrations -database \"postgres://${ROGELEDB_DB_USER}:${ROGELEDB_DB_PASSWORD}@${ROGELEDB_DB_HOST}:${ROGELEDB_DB_PORT}/${ROGELEDB_DB_NAME}?sslmode=require\" up && ./rogele"]
+# CMD ["sh", "-c", "migrate -path ./migrations -database \"postgres://${ROGELEDB_DB_USER}:${ROGELEDB_DB_PASSWORD}@${ROGELEDB_DB_HOST}:${ROGELEDB_DB_PORT}/${ROGELEDB_DB_NAME}?sslmode=require\" up && ./rogele"]
+CMD ["./rogele"]
