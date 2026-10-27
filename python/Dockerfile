@@ -1,4 +1,4 @@
-FROM python:3.15-slim
+FROM python:3.13-slim
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
@@ -12,6 +12,6 @@ COPY src ./src
 ENV PYTHONPATH=/app/src
 ENV PATH="/app/.venv/bin:$PATH"
 
-EXPOSE 9000
+EXPOSE 10000
 
-CMD ["uvicorn", "rogeledb_analytics.main:app", "--host", "0.0.0.0", "--port", "9000"]
+CMD ["sh", "-c", "uvicorn rogeledb_analytics.main:app --host 0.0.0.0 --port ${PORT:-9000}"]
