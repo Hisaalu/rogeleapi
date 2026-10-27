@@ -228,9 +228,12 @@ func applyStringEnv(cfg *Config) {
 }
 
 func applyIntEnv(cfg *Config) {
-	if v := getIntEnv("ROGELEDB_APP_PORT"); v > 0 {
+	if v := getIntEnv("PORT"); v > 0 {
+		cfg.App.Port = v
+	} else if v := getIntEnv("ROGELEDB_APP_PORT"); v > 0 {
 		cfg.App.Port = v
 	}
+
 	if v := getIntEnv("ROGELEDB_DB_PORT"); v > 0 {
 		cfg.Database.Port = v
 	}
