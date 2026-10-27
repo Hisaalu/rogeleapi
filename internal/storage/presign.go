@@ -21,7 +21,6 @@ const (
 )
 
 var allowedMIME = map[string]struct{}{
-	// documents
 	"application/pdf":    {},
 	"application/msword": {},
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":   {},
@@ -29,21 +28,18 @@ var allowedMIME = map[string]struct{}{
 	"application/vnd.openxmlformats-officedocument.presentationml.presentation": {},
 	"application/vnd.ms-excel":                                                  {},
 	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         {},
-	"text/plain": {},
-	"text/csv":   {},
-	// images
-	"image/jpeg": {},
-	"image/png":  {},
-	"image/webp": {},
-	"image/gif":  {},
-	// video
+	"text/plain":      {},
+	"text/csv":        {},
+	"image/jpeg":      {},
+	"image/png":       {},
+	"image/webp":      {},
+	"image/gif":       {},
 	"video/mp4":       {},
 	"video/quicktime": {},
 	"video/webm":      {},
-	// audio
-	"audio/mpeg":  {},
-	"audio/mp4":   {},
-	"audio/x-m4a": {},
+	"audio/mpeg":      {},
+	"audio/mp4":       {},
+	"audio/x-m4a":     {},
 }
 
 func IsAllowedMIME(contentType string) bool {
@@ -68,11 +64,12 @@ func (c *R2Client) PresignUpload(ctx context.Context, in PresignRequest) (*Presi
 		return nil, fmt.Errorf("%w: file type %s is not allowed", domain.ErrInvalidInput, in.ContentType)
 	}
 
-	prefix := sanitizeSegment(in.Prefix)
+	prefix := sanitizePath(in.Prefix)
 	if prefix == "" {
 		prefix = "uploads"
 	}
 	ext := strings.ToLower(filepath.Ext(in.FileName))
+
 	key := fmt.Sprintf("%s/%s%s", prefix, uuid.NewString(), ext)
 
 	presigned, err := c.presigner.PresignPutObject(ctx, &s3.PutObjectInput{
@@ -94,23 +91,42 @@ func (c *R2Client) PresignUpload(ctx context.Context, in PresignRequest) (*Presi
 	}, nil
 }
 
-func sanitizeSegment(s string) string {
+func sanitizePath(s string) string {
 	s = strings.TrimSpace(s)
-	if len(s) > MaxPathSegment {
-		s = s[:MaxPathSegment]
+	if s == "" {
+		return ""
 	}
-	var b strings.Builder
-	for _, r := range s {
-		switch {
-		case r >= 'a' && r <= 'z':
-			b.WriteRune(r)
-		case r >= 'A' && r <= 'Z':
-			b.WriteRune(r)
-		case r >= '0' && r <= '9':
-			b.WriteRune(r)
-		case r == '-' || r == '_':
-			b.WriteRune(r)
+
+	if len(s) > 200 {
+		s = s[:200]
+	}
+
+	parts := strings.Split(s, "/")
+	var cleaned []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if len(p) > MaxPathSegment {
+			p = p[:MaxPathSegment]
+		}
+		var b strings.Builder
+		for _, r := range p {
+			switch {
+			case r >= 'a' && r <= 'z':
+				b.WriteRune(r)
+			case r >= 'A' && r <= 'Z':
+				b.WriteRune(r)
+			case r >= '0' && r <= '9':
+				b.WriteRune(r)
+			case r == '-' || r == '_':
+				b.WriteRune(r)
+			}
+		}
+		if b.Len() > 0 {
+			cleaned = append(cleaned, b.String())
 		}
 	}
-	return b.String()
+	return strings.Join(cleaned, "/")
 }
