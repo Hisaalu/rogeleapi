@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/Hisaalu/rogele/internal/httputil"
 )
@@ -41,9 +42,26 @@ func (h *ConfigHandler) PublicConfig(w http.ResponseWriter, r *http.Request) {
 		"website_url":   values["branding.website_url"],
 	}
 
+	custom := make(map[string]string)
+	for k, v := range values {
+		if strings.HasPrefix(k, "branding.") {
+			continue
+		}
+		lower := strings.ToLower(k)
+		if strings.Contains(lower, "secret") ||
+			strings.Contains(lower, "password") ||
+			strings.Contains(lower, "token") ||
+			strings.Contains(lower, "api_key") ||
+			strings.Contains(lower, "apikey") {
+			continue
+		}
+		custom[k] = v
+	}
+
 	w.Header().Set("Cache-Control", "public, max-age=60")
 	httputil.JSON(w, http.StatusOK, map[string]any{
 		"branding": branding,
+		"settings": custom,
 	})
 }
 

@@ -18,7 +18,7 @@ func (r *SettingsRepo) ListPublicSettings(ctx context.Context) (map[string]strin
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT setting_key, setting_value
 		FROM settings
-		WHERE setting_key LIKE 'branding.%'
+		WHERE setting_value IS NOT NULL
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("list public settings: %w", err)
