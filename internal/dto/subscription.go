@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"math"
 	"time"
 
 	"github.com/Hisaalu/rogele/internal/domain"
@@ -43,14 +44,14 @@ func SubscriptionFromDomain(s *domain.Subscription) SubscriptionResponse {
 		UserID:        s.UserID,
 		PlanType:      string(s.PlanType),
 		Amount:        s.Amount,
-		StartDate:     s.StartDate,
-		EndDate:       s.EndDate,
+		StartDate:     s.StartDate.UTC(),
+		EndDate:       s.EndDate.UTC(),
 		PaymentMethod: s.PaymentMethod,
 		TransactionID: s.TransactionID,
 		Status:        string(s.Status),
 		AutoRenew:     s.AutoRenew,
 		IsUpgrade:     s.IsUpgrade,
-		CreatedAt:     s.CreatedAt,
+		CreatedAt:     s.CreatedAt.UTC(),
 	}
 }
 
@@ -62,29 +63,55 @@ func SubscriptionsFromDomain(items []*domain.Subscription) []SubscriptionRespons
 	return out
 }
 
-func TrialFromDomain(t *domain.FreeTrial) StartTrialResponse {
-	now := time.Now()
-
-	isInTrial := now.Before(t.EndDate)
-
-	totalDays := int(t.EndDate.Sub(t.StartDate).Hours() / 24)
-	if totalDays < 0 {
-		totalDays = 0
+func calendarDaysBetween(from, to time.Time) int {
+	from = from.UTC()
+	to = to.UTC()
+	fromDay := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, time.UTC)
+	toDay := time.Date(to.Year(), to.Month(), to.Day(), 0, 0, 0, 0, time.UTC)
+	diff := int(math.Ceil(toDay.Sub(fromDay).Hours() / 24))
+	if diff < 0 {
+		return 0
 	}
+	return diff
+}
 
-	var daysRemaining int
+func remainingDays(end, now time.Time) int {
+	end = end.UTC()
+	now = now.UTC()
+	if !end.After(now) {
+		return 0
+	}
+	return int(math.Ceil(end.Sub(now).Hours() / 24))
+}
+
+func TrialFromDomain(t *domain.FreeTrial) StartTrialResponse {
+	now := time.Now().UTC()
+	endDate := t.EndDate.UTC()
+	startDate := t.StartDate.UTC()
+
+	isInTrial := endDate.After(now)
+	totalDays := calendarDaysBetween(startDate, endDate)
+	daysRemaining := 0
 	if isInTrial {
-		daysRemaining = int(t.EndDate.Sub(now).Hours() / 24)
-		if daysRemaining < 0 {
-			daysRemaining = 0
-		}
+		daysRemaining = remainingDays(endDate, now)
 	}
 
 	return StartTrialResponse{
 		IsInTrial:     isInTrial,
 		DaysRemaining: daysRemaining,
 		TotalDays:     totalDays,
-		EndDate:       t.EndDate,
-		StartDate:     t.StartDate,
+		EndDate:       endDate,
+		StartDate:     startDate,
+	}
+}
+
+func TrialResponseFromDomain(t *domain.FreeTrial) TrialResponse {
+	resp := TrialFromDomain(t)
+	return TrialResponse{
+		IsInTrial:     resp.IsInTrial,
+		DaysRemaining: resp.DaysRemaining,
+		TotalDays:     resp.TotalDays,
+		EndDate:       resp.EndDate,
+		StartDate:     resp.StartDate,
 	}
 }
