@@ -423,11 +423,6 @@ func (s *QuizService) StartAttempt(ctx context.Context, quizID int64, actor Acto
 		}
 	}
 
-	completed, _ := s.quizzes.CountAttempts(ctx, quizID, actor.UserID)
-	if completed > 0 {
-		return nil, fmt.Errorf("%w: you have already completed this quiz", domain.ErrConflict)
-	}
-
 	attempt := &domain.QuizAttempt{
 		QuizID:    &quizID,
 		UserID:    &actor.UserID,
