@@ -355,7 +355,7 @@ func (r *QuizRepo) SaveAnswer(ctx context.Context, a *domain.QuizAttemptAnswer) 
 	query := `
 		INSERT INTO quiz_attempt_answers (attempt_id, question_id, selected_answer, is_correct)
 		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (attempt_id, question_id) DO UPDATE 
+		ON CONFLICT (attempt_id, question_id) DO UPDATE
 		SET selected_answer = EXCLUDED.selected_answer,
 		    is_correct = EXCLUDED.is_correct
 	`

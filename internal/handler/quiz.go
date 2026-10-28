@@ -343,7 +343,18 @@ func (h *QuizHandler) StartAttempt(w http.ResponseWriter, r *http.Request) {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
-	httputil.JSON(w, http.StatusOK, dto.AttemptFromDomain(attempt))
+
+	answers, _ := h.svc.ListAttemptAnswers(r.Context(), attempt.ID)
+	saved := make(map[string]int, len(answers))
+	for _, a := range answers {
+		if a.SelectedAnswer != nil {
+			saved[fmt.Sprintf("%d", a.QuestionID)] = *a.SelectedAnswer
+		}
+	}
+
+	resp := dto.AttemptFromDomain(attempt)
+	resp.SavedAnswers = saved
+	httputil.JSON(w, http.StatusOK, resp)
 }
 
 func (h *QuizHandler) SubmitAttempt(w http.ResponseWriter, r *http.Request) {

@@ -358,19 +358,19 @@ func (s *QuizService) StartAttempt(ctx context.Context, quizID int64, actor Acto
 		return nil, fmt.Errorf("%w: quiz has ended", domain.ErrForbidden)
 	}
 
-		if existing, err := s.quizzes.GetInProgressAttempt(ctx, quizID, actor.UserID); err == nil {
+	if existing, err := s.quizzes.GetInProgressAttempt(ctx, quizID, actor.UserID); err == nil {
 		if q.TimeLimit != nil && *q.TimeLimit > 0 {
 			started := existing.StartedAt.UTC()
 			deadline := started.Add(time.Duration(*q.TimeLimit) * time.Minute)
-			
+
 			if time.Now().UTC().After(deadline) {
 				existing.Status = domain.QuizAttemptExpired
 				completed := time.Now().UTC()
 				existing.CompletedAt = &completed
-				
+
 				savedAnswers, _ := s.quizzes.ListAnswers(ctx, existing.ID)
 				questions, _ := s.quizzes.ListQuestions(ctx, *existing.QuizID)
-				
+
 				correct := 0
 				qMap := make(map[int64]*domain.QuizQuestion)
 				for _, question := range questions {
@@ -393,13 +393,13 @@ func (s *QuizService) StartAttempt(ctx context.Context, quizID int64, actor Acto
 				if totalQuestions > 0 {
 					score = correct * 100 / totalQuestions
 				}
-				
+
 				existing.Score = &score
 				existing.TotalQuestions = &totalQuestions
 				existing.CorrectAnswers = &correct
-				
+
 				_ = s.quizzes.UpdateAttempt(ctx, existing)
-				
+
 				return nil, fmt.Errorf("%w: your previous attempt expired and was auto-submitted", domain.ErrForbidden)
 			} else {
 				return existing, nil
@@ -421,6 +421,11 @@ func (s *QuizService) StartAttempt(ctx context.Context, quizID int64, actor Acto
 				q.MaxAttempts,
 			)
 		}
+	}
+
+	completed, _ := s.quizzes.CountAttempts(ctx, quizID, actor.UserID)
+	if completed > 0 {
+		return nil, fmt.Errorf("%w: you have already completed this quiz", domain.ErrConflict)
 	}
 
 	attempt := &domain.QuizAttempt{
@@ -465,14 +470,15 @@ func (s *QuizService) SubmitAttempt(ctx context.Context, attemptID int64, actor 
 	if a.UserID == nil || *a.UserID != actor.UserID {
 		return nil, domain.ErrForbidden
 	}
-	if a.Status != domain.QuizAttemptInProgress {
-		return nil, fmt.Errorf("%w: attempt is not in progress", domain.ErrInvalidInput)
-	}
 	if a.QuizID == nil {
 		return nil, fmt.Errorf("%w: attempt has no quiz", domain.ErrInternal)
 	}
-	if _, err := s.quizzes.GetByID(ctx, *a.QuizID); err != nil {
-		return nil, err
+
+	if a.Status == domain.QuizAttemptCompleted {
+		return a, nil
+	}
+	if a.Status != domain.QuizAttemptInProgress {
+		return nil, fmt.Errorf("%w: attempt is not in progress", domain.ErrInvalidInput)
 	}
 
 	questions, err := s.quizzes.ListQuestions(ctx, *a.QuizID)
@@ -480,25 +486,35 @@ func (s *QuizService) SubmitAttempt(ctx context.Context, attemptID int64, actor 
 		return nil, err
 	}
 	questionMap := make(map[int64]*domain.QuizQuestion, len(questions))
-	for _, question := range questions {
-		questionMap[question.ID] = question
+	for _, q := range questions {
+		questionMap[q.ID] = q
+	}
+
+	existing, _ := s.quizzes.ListAnswers(ctx, attemptID)
+	merged := make(map[int64]*int, len(questions))
+	for _, e := range existing {
+		merged[e.QuestionID] = e.SelectedAnswer
+	}
+	for _, ans := range answers {
+		if _, ok := questionMap[ans.QuestionID]; !ok {
+			continue
+		}
+		sel := ans.SelectedAnswer
+		merged[ans.QuestionID] = sel
 	}
 
 	correct := 0
-	for _, ans := range answers {
-		question, ok := questionMap[ans.QuestionID]
-		if !ok {
-			continue
-		}
+	for qID, sel := range merged {
+		question := questionMap[qID]
 		isCorrect := false
-		if ans.SelectedAnswer != nil && question.CorrectAnswer != nil {
-			letter := answerLetter(*ans.SelectedAnswer)
+		if sel != nil && question.CorrectAnswer != nil {
+			letter := answerLetter(*sel)
 			isCorrect = letter != "" && letter == *question.CorrectAnswer
 		}
 		if err := s.quizzes.SaveAnswer(ctx, &domain.QuizAttemptAnswer{
 			AttemptID:      attemptID,
-			QuestionID:     ans.QuestionID,
-			SelectedAnswer: ans.SelectedAnswer,
+			QuestionID:     qID,
+			SelectedAnswer: sel,
 			IsCorrect:      isCorrect,
 		}); err != nil {
 			return nil, err
