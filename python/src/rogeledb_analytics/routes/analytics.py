@@ -441,3 +441,72 @@ async def revenue_forecast(
             "intercept": round(float(intercept), 2),
         },
     }
+
+@router.get("/teacher-overview")
+async def teacher_overview(
+    teacher_id: int = Query(..., description="The ID of the teacher"),
+) -> dict:
+    """
+    Single Source of Truth for the Teacher Dashboard.
+    Calculates exact total students (via classes) and the true average score
+    (average of all attempts across the teacher's quizzes).
+    """
+    try:
+        quizzes_payload = await go_client.get(f"/quizzes?teacher_id={teacher_id}&per_page=100")
+        
+        quizzes = []
+        if isinstance(quizzes_payload, dict) and "data" in quizzes_payload:
+            quizzes = quizzes_payload["data"]
+        elif isinstance(quizzes_payload, list):
+            quizzes = quizzes_payload
+
+        import asyncio
+        async def fetch_attempts(q_id):
+            try:
+                res = await go_client.get(f"/quizzes/{q_id}/attempts")
+                return res if isinstance(res, list) else res.get("data", [])
+            except Exception:
+                return []
+
+        tasks = [fetch_attempts(q["id"]) for q in quizzes]
+        attempts_arrays = await asyncio.gather(*tasks)
+        
+        all_attempts = [attempt for sublist in attempts_arrays for attempt in sublist]
+
+        valid_attempts = [
+            a for a in all_attempts 
+            if a.get("status") == "completed" and a.get("score") is not None
+        ]
+        
+        total_percentage = 0
+        valid_count = 0
+        
+        for a in valid_attempts:
+            score = a.get("score", 0)
+            total_qs = a.get("total_questions") or 0
+            
+            if total_qs == 0 or score > total_qs:
+                pct = float(score)
+            else:
+                pct = (float(score) / float(total_qs)) * 100
+                
+            total_percentage += min(max(pct, 0), 100)
+            valid_count += 1
+
+        avg_score = round(total_percentage / valid_count) if valid_count > 0 else 0
+
+        try:
+            learner_counts = await go_client.get("/admin/learners-by-class")
+            total_students = sum(c.get("learner_count", 0) for c in learner_counts) if isinstance(learner_counts, list) else 0
+        except Exception:
+            total_students = 0
+
+        return {
+            "average_score": avg_score,
+            "total_students": total_students,
+            "total_quizzes": len(quizzes),
+            "attempts_counted": valid_count
+        }
+        
+    except GoAPIError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc

@@ -56,15 +56,13 @@ func (h *QuizHandler) List(w http.ResponseWriter, r *http.Request) {
 		Offset: (page - 1) * perPage,
 		Search: r.URL.Query().Get("q"),
 	}
-	if v := r.URL.Query().Get("subject_id"); v != "" {
+
+	if v := r.URL.Query().Get("teacher_id"); v != "" {
 		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
-			f.SubjectID = &id
+			f.TeacherID = &id
 		}
-	}
-	if v := r.URL.Query().Get("class_id"); v != "" {
-		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
-			f.ClassID = &id
-		}
+	} else if actor.Role == domain.RoleTeacher {
+		f.TeacherID = &actor.UserID
 	}
 
 	list, err := h.svc.List(r.Context(), actor, f)
