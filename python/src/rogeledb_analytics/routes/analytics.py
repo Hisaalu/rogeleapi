@@ -446,14 +446,9 @@ async def revenue_forecast(
 async def teacher_overview(
     teacher_id: int = Query(..., description="The ID of the teacher"),
 ) -> dict:
-    """
-    Single Source of Truth for the Teacher Dashboard.
-    Calculates exact total students (via classes) and the true average score
-    (average of all attempts across the teacher's quizzes).
-    """
+    """Single Source of Truth for the Teacher Dashboard."""
     try:
         quizzes_payload = await go_client.get(f"/quizzes?teacher_id={teacher_id}&per_page=100")
-        
         quizzes = []
         if isinstance(quizzes_payload, dict) and "data" in quizzes_payload:
             quizzes = quizzes_payload["data"]
@@ -461,11 +456,13 @@ async def teacher_overview(
             quizzes = quizzes_payload
 
         import asyncio
+        
         async def fetch_attempts(q_id):
             try:
                 res = await go_client.get(f"/quizzes/{q_id}/attempts")
                 return res if isinstance(res, list) else res.get("data", [])
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Failed to fetch attempts for quiz {q_id}: {e}")
                 return []
 
         tasks = [fetch_attempts(q["id"]) for q in quizzes]
@@ -498,7 +495,8 @@ async def teacher_overview(
         try:
             learner_counts = await go_client.get("/admin/learners-by-class")
             total_students = sum(c.get("learner_count", 0) for c in learner_counts) if isinstance(learner_counts, list) else 0
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to fetch learner counts: {e}")
             total_students = 0
 
         return {
