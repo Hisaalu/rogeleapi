@@ -40,12 +40,6 @@ async def enrollment_trend(
     frm: str | None = Query(None, alias="from"),
     to: str | None = Query(None),
 ) -> dict:
-    """Signups per period, with a moving average.
-
-    The moving average is computed here because it is a Python-strength
-    calculation (numpy) and we want the frontend to render it directly
-    without a second round trip.
-    """
     default_from, default_to = _default_dates()
     from_date = _parse_date(frm, default=default_from)
     to_date = _parse_date(to, default=default_to)
@@ -90,7 +84,6 @@ async def revenue_over_time(
     frm: str | None = Query(None, alias="from"),
     to: str | None = Query(None),
 ) -> dict:
-    """Completed revenue per period, with a cumulative total."""
     default_from, default_to = _default_dates()
     from_date = _parse_date(frm, default=default_from)
     to_date = _parse_date(to, default=default_to)
@@ -134,11 +127,6 @@ async def revenue_over_time(
 
 @router.get("/score-distribution")
 async def score_distribution() -> dict:
-    """Score buckets plus percentile markers for the whole platform.
-
-    Percentiles add context to the histogram: the frontend can show "median
-    score", "top 10% start at X", and so on.
-    """
     try:
         payload = await go_client.get("/analytics/score-distribution")
     except GoAPIError as exc:
@@ -154,13 +142,13 @@ async def score_distribution() -> dict:
         "passing_pct": payload.get("passing_pct", 0),
     }
 
+
 @router.get("/retention")
 async def retention(
     frm: str | None = Query(None, alias="from"),
     to: str | None = Query(None),
     weeks: int = Query(8, ge=1, le=52),
 ) -> dict:
-    """Weekly signup cohort retention."""
     default_from, default_to = _default_dates()
     from_date = _parse_date(frm, default=default_from)
     to_date = _parse_date(to, default=default_to)
@@ -178,7 +166,7 @@ async def retention(
         return {"cohorts": [], "weeks": weeks}
 
     signup_df = pd.DataFrame(signups)
-    signup_df["created_at"] = pd.to_datetime(signup_df["created_at"], utc=True)
+    signup_df["created_at"] = pd.to_datetime(signup_df["created_at"], utc=True, format="ISO8601").dt.tz_localize(None)
     signup_df["cohort_week"] = signup_df["created_at"].dt.to_period("W").dt.start_time
 
     if not isinstance(events, list) or not events:
@@ -205,7 +193,7 @@ async def retention(
         return {"cohorts": cohorts, "weeks": weeks}
 
     events_df = pd.DataFrame(events)
-    events_df["created_at"] = pd.to_datetime(events_df["created_at"], utc=True)
+    events_df["created_at"] = pd.to_datetime(events_df["created_at"], utc=True, format="ISO8601").dt.tz_localize(None)
     events_df["event_week"] = events_df["created_at"].dt.to_period("W").dt.start_time
 
     activity = events_df[["user_id", "event_week"]].drop_duplicates()
@@ -256,10 +244,6 @@ async def activity_heatmap(
     frm: str | None = Query(None, alias="from"),
     to: str | None = Query(None),
 ) -> dict:
-    """Day-of-week × hour-of-day activity grid.
-
-    Values are event counts. The frontend renders this as a heatmap.
-    """
     default_from, default_to = _default_dates()
     from_date = _parse_date(frm, default=default_from)
     to_date = _parse_date(to, default=default_to)
@@ -278,7 +262,7 @@ async def activity_heatmap(
         return {"grid": grid, "max": 0, "total": 0}
 
     df = pd.DataFrame(events)
-    df["created_at"] = pd.to_datetime(df["created_at"], utc=True)
+    df["created_at"] = pd.to_datetime(df["created_at"], utc=True, format="ISO8601")
     df["dow"] = df["created_at"].dt.dayofweek  
     df["hour"] = df["created_at"].dt.hour
 
@@ -299,25 +283,12 @@ async def activity_heatmap(
 
     return {"grid": grid, "max": max_value, "total": total}
 
+
 @router.get("/at-risk-learners")
 async def at_risk_learners(
     min_score: int = Query(3, ge=0, le=20),
     limit: int = Query(50, ge=1, le=200),
 ) -> dict:
-    """Rank learners by risk signals.
-
-    Each learner gets a score based on weighted factors:
-
-    - No activity in 14+ days (3), 7-13 days (2), 3-6 days (1)
-    - Quiz average below 50% (2), 50-65% (1)
-    - Missing 3+ assignments (3), 1-2 assignments (1)
-    - Homework average below 50% (2), 50-65% (1)
-
-    Band assignment:
-    - score 0-2: healthy
-    - score 3-5: watch
-    - score 6+:  at risk
-    """
     try:
         signals = await go_client.get("/analytics/learner-signals")
     except GoAPIError as exc:
@@ -425,11 +396,6 @@ async def at_risk_learners(
 async def revenue_forecast(
     months_ahead: int = Query(3, ge=1, le=12),
 ) -> dict:
-    """Linear projection of future revenue based on historical monthly totals.
-
-    Uses numpy's polyfit to fit a straight line to the historical monthly
-    revenue points and extrapolates it forward.
-    """
     try:
         payload = await go_client.get(
             "/analytics/revenue-over-time",
