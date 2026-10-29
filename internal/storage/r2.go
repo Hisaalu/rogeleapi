@@ -46,14 +46,14 @@ func NewR2Client(ctx context.Context, cfg config.R2Config) (*R2Client, error) {
 
 	return &R2Client{
 		bucket:    cfg.Bucket,
-		publicURL: cfg.PublicURL,
+		publicURL: strings.TrimSuffix(cfg.PublicURL, "/"),
 		presigner: s3.NewPresignClient(client),
 		client:    client,
 	}, nil
 }
 
 func (c *R2Client) PublicURL(key string) string {
-	return fmt.Sprintf("%s/%s", c.publicURL, key)
+	return fmt.Sprintf("%s/%s", c.publicURL, strings.TrimPrefix(key, "/"))
 }
 
 func (c *R2Client) BaseURL() string {
@@ -78,10 +78,17 @@ func (c *R2Client) ExtractKey(filePath string) string {
 	if filePath == "" {
 		return ""
 	}
+
 	if strings.HasPrefix(filePath, "http://") || strings.HasPrefix(filePath, "https://") {
-		cleanBase := strings.TrimSuffix(c.publicURL, "/")
-		trimmed := strings.TrimPrefix(filePath, cleanBase)
-		return strings.TrimPrefix(trimmed, "/")
+		parts := strings.SplitN(filePath, "/", 4)
+		if len(parts) == 4 {
+			path := parts[3]
+			path = strings.TrimPrefix(path, "rogele-platform/")
+			return path
+		}
 	}
-	return strings.TrimPrefix(filePath, "/")
+
+	path := strings.TrimPrefix(filePath, "/")
+	path = strings.TrimPrefix(path, "rogele-platform/")
+	return path
 }

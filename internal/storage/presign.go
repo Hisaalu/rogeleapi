@@ -111,6 +111,9 @@ func sanitizePath(s string) string {
 		if len(p) > MaxPathSegment {
 			p = p[:MaxPathSegment]
 		}
+
+		p = strings.ReplaceAll(p, " ", "_")
+
 		var b strings.Builder
 		for _, r := range p {
 			switch {
@@ -120,7 +123,7 @@ func sanitizePath(s string) string {
 				b.WriteRune(r)
 			case r >= '0' && r <= '9':
 				b.WriteRune(r)
-			case r == '-' || r == '_':
+			case r == '-' || r == '_' || r == '.':
 				b.WriteRune(r)
 			}
 		}
