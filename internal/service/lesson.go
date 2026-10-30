@@ -426,3 +426,26 @@ func canEditLesson(l *domain.Lesson, actor ActorContext) error {
 	}
 	return fmt.Errorf("%w: insufficient role", domain.ErrForbidden)
 }
+
+func (s *LessonService) CountList(ctx context.Context, actor ActorContext, f repository.LessonFilter) (int, error) {
+	switch actor.Role {
+	case domain.RoleAdmin:
+	case domain.RoleTeacher:
+		uid := actor.UserID
+		f.TeacherID = &uid
+	case domain.RoleLearner, domain.RoleExternal:
+		pub := true
+		f.PublishedAt = &pub
+		classID, err := s.learnerClassID(ctx, actor)
+		if err != nil {
+			return 0, err
+		}
+		if classID == nil {
+			return 0, nil
+		}
+		f.ClassID = classID
+	default:
+		return 0, domain.ErrForbidden
+	}
+	return s.lessons.Count(ctx, f)
+}

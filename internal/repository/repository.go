@@ -61,6 +61,8 @@ type LessonRepository interface {
 	AddBookmark(ctx context.Context, b *domain.Bookmark) error
 	RemoveBookmark(ctx context.Context, userID, lessonID int64) error
 	ListBookmarks(ctx context.Context, userID int64) ([]*domain.Lesson, error)
+
+	Count(ctx context.Context, f LessonFilter) (int, error)
 }
 
 type HomeworkFilter struct {

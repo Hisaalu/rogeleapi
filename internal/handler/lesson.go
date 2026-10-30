@@ -81,11 +81,28 @@ func (h *LessonHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Call CountList (requires the service/repo additions above)
+	total, _ := h.svc.CountList(r.Context(), actor, filter)
+
 	out := make([]dto.LessonResponse, 0, len(lessons))
 	for _, l := range lessons {
 		out = append(out, h.enricher.enrich(r.Context(), l, actor.UserID))
 	}
-	httputil.JSON(w, http.StatusOK, out)
+
+	lastPage := 1
+	if perPage > 0 && total > 0 {
+		lastPage = (total + perPage - 1) / perPage
+	}
+
+	httputil.JSON(w, http.StatusOK, map[string]any{
+		"data": out,
+		"meta": map[string]int{
+			"page":      page,
+			"per_page":  perPage,
+			"total":     total,
+			"last_page": lastPage,
+		},
+	})
 }
 
 func (h *LessonHandler) Get(w http.ResponseWriter, r *http.Request) {

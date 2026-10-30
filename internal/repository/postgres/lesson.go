@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/Hisaalu/rogele/internal/dberr"
 	"github.com/Hisaalu/rogele/internal/domain"
@@ -91,46 +90,12 @@ func (r *LessonRepo) Delete(ctx context.Context, id int64) error {
 }
 
 func (r *LessonRepo) List(ctx context.Context, f repository.LessonFilter) ([]*domain.Lesson, error) {
-	var where []string
-	var args []any
-	i := 1
-
-	if f.TeacherID != nil {
-		where = append(where, fmt.Sprintf("teacher_id = $%d", i))
-		args = append(args, *f.TeacherID)
-		i++
-	}
-	if f.SubjectID != nil {
-		where = append(where, fmt.Sprintf("subject_id = $%d", i))
-		args = append(args, *f.SubjectID)
-		i++
-	}
-	if f.ClassID != nil {
-		where = append(where, fmt.Sprintf("class_id = $%d", i))
-		args = append(args, *f.ClassID)
-		i++
-	}
-	if f.PublishedAt != nil {
-		where = append(where, fmt.Sprintf("is_published = $%d", i))
-		args = append(args, *f.PublishedAt)
-		i++
-	}
-	if f.ApprovedAt != nil {
-		where = append(where, fmt.Sprintf("is_approved = $%d", i))
-		args = append(args, *f.ApprovedAt)
-		i++
-	}
-	if f.Search != "" {
-		where = append(where, fmt.Sprintf(
-			"(title ILIKE $%d OR content ILIKE $%d)", i, i,
-		))
-		args = append(args, "%"+f.Search+"%")
-		i++
-	}
+	where, args := buildLessonWhere(f)
+	i := len(args) + 1
 
 	query := `SELECT ` + lessonColumns + ` FROM lessons`
-	if len(where) > 0 {
-		query += " WHERE " + strings.Join(where, " AND ")
+	if where != "" {
+		query += " WHERE " + where
 	}
 	query += " ORDER BY created_at DESC"
 
@@ -288,6 +253,40 @@ type lessonScanner interface {
 	Scan(dest ...any) error
 }
 
+func buildLessonWhere(f repository.LessonFilter) (string, []any) {
+	var where []string
+	var args []any
+	i := 1
+
+	if f.TeacherID != nil {
+		where = append(where, fmt.Sprintf("teacher_id = $%d", i))
+		args = append(args, *f.TeacherID)
+		i++
+	}
+	if f.ClassID != nil {
+		where = append(where, fmt.Sprintf("class_id = $%d", i))
+		args = append(args, *f.ClassID)
+		i++
+	}
+	if f.SubjectID != nil {
+		where = append(where, fmt.Sprintf("subject_id = $%d", i))
+		args = append(args, *f.SubjectID)
+		i++
+	}
+	if f.PublishedAt != nil {
+		where = append(where, fmt.Sprintf("is_published = $%d", i))
+		args = append(args, *f.PublishedAt)
+		i++
+	}
+	if f.Search != "" {
+		where = append(where, fmt.Sprintf("(title ILIKE $%d OR content ILIKE $%d)", i, i))
+		args = append(args, "%"+f.Search+"%")
+		i++
+	}
+
+	return joinAnd(where), args
+}
+
 func scanLesson(row *sql.Row) (*domain.Lesson, error) {
 	l, err := scanLessonRow(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -373,6 +372,18 @@ func scanMaterial(s lessonScanner) (*domain.LessonMaterial, error) {
 		m.FileSize = &s
 	}
 	return &m, nil
+}
+
+func (r *LessonRepo) Count(ctx context.Context, f repository.LessonFilter) (int, error) {
+	where, args := buildLessonWhere(f)
+	query := `SELECT COUNT(*) FROM lessons`
+	if where != "" {
+		query += " WHERE " + where
+	}
+
+	var n int
+	err := r.db.QueryRowContext(ctx, query, args...).Scan(&n)
+	return n, err
 }
 
 var _ repository.LessonRepository = (*LessonRepo)(nil)
