@@ -57,8 +57,8 @@ func (r *SubscriptionRepo) GetByID(ctx context.Context, id int64) (*domain.Subsc
 
 func (r *SubscriptionRepo) GetActiveByUser(ctx context.Context, userID int64) (*domain.Subscription, error) {
 	query := `SELECT ` + subscriptionColumns + ` FROM subscriptions
-	          WHERE user_id = $1 AND status = 'active'
-	          ORDER BY end_date DESC LIMIT 1`
+              WHERE user_id = $1 AND status = 'active' AND end_date > CURRENT_TIMESTAMP
+              ORDER BY end_date DESC LIMIT 1`
 	return scanSubscription(r.db.QueryRowContext(ctx, query, userID))
 }
 
