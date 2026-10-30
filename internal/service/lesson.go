@@ -390,14 +390,21 @@ func (s *LessonService) canViewLesson(ctx context.Context, l *domain.Lesson, act
 		if !l.IsPublished {
 			return fmt.Errorf("%w: lesson is not published", domain.ErrForbidden)
 		}
+
 		classID, err := s.learnerClassID(ctx, actor)
 		if err != nil {
 			return err
 		}
-		if classID == nil || l.ClassID == nil || *classID != *l.ClassID {
-			return fmt.Errorf("%w: lesson is not for your class", domain.ErrForbidden)
+		if classID != nil && l.ClassID != nil && *classID == *l.ClassID {
+			return nil
 		}
-		return nil
+
+		isBookmarked, err := s.lessons.IsBookmarked(ctx, actor.UserID, l.ID)
+		if err == nil && isBookmarked {
+			return nil
+		}
+
+		return fmt.Errorf("%w: lesson is not for your class", domain.ErrForbidden)
 	}
 	return domain.ErrForbidden
 }
