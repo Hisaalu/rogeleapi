@@ -7,16 +7,21 @@ import (
 	"log/slog"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/Hisaalu/rogele/internal/config"
 )
 
 func NewPostgres(ctx context.Context, cfg config.DatabaseConfig, log *slog.Logger) (*sql.DB, error) {
-	db, err := sql.Open("postgres", cfg.DSN())
+	connConfig, err := pgx.ParseConfig(cfg.DSN())
 	if err != nil {
-		return nil, fmt.Errorf("open postgres: %w", err)
+		return nil, fmt.Errorf("parse dsn: %w", err)
 	}
+	connConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+	connConfig.RuntimeParams["timezone"] = "UTC"
+
+	db := stdlib.OpenDB(*connConfig)
 
 	db.SetMaxOpenConns(cfg.MaxOpenConns)
 	db.SetMaxIdleConns(cfg.MaxIdleConns)
@@ -36,6 +41,8 @@ func NewPostgres(ctx context.Context, cfg config.DatabaseConfig, log *slog.Logge
 		"port", cfg.Port,
 		"database", cfg.Name,
 		"max_open_conns", cfg.MaxOpenConns,
+		"driver", "pgx/v5",
+		"query_mode", "simple_protocol",
 	)
 
 	return db, nil

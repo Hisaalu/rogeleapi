@@ -125,7 +125,7 @@ func Load() (*Config, error) {
 	v.SetDefault("database.sslmode", "disable")
 	v.SetDefault("database.max_open_conns", 25)
 	v.SetDefault("database.max_idle_conns", 5)
-	v.SetDefault("database.conn_max_lifetime", "1h")
+	v.SetDefault("database.conn_max_lifetime", "30m")
 	v.SetDefault("jwt.access_ttl", "15m")
 	v.SetDefault("jwt.refresh_ttl", "168h")
 	v.SetDefault("momo.currency", "EUR")

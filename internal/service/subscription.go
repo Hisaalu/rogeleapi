@@ -98,7 +98,7 @@ func (s *SubscriptionService) StartTrial(ctx context.Context, actor ActorContext
 		return nil, err
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 	trial := &domain.FreeTrial{
 		UserID:    &actor.UserID,
 		StartDate: now,
@@ -155,7 +155,7 @@ func (s *SubscriptionService) ActivateFromPayment(
 	paymentMethod string,
 	transactionID string,
 ) (*domain.Subscription, error) {
-	now := time.Now()
+	now := time.Now().UTC()
 
 	planTypeStr := strings.ToLower(plan.Name)
 	if planTypeStr == "" {
@@ -177,7 +177,9 @@ func (s *SubscriptionService) ActivateFromPayment(
 		if err := s.subs.Update(ctx, existing); err != nil {
 			return nil, err
 		}
-		return s.subs.GetByID(ctx, existing.ID)
+		existing.Status = domain.SubscriptionActive
+		return existing, nil
+
 	} else if !errors.Is(err, domain.ErrNotFound) {
 		return nil, err
 	}
