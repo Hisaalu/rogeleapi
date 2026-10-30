@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	"github.com/Hisaalu/rogele/internal/domain"
 )
@@ -40,6 +39,10 @@ func (r *AdminStatsRepo) GetOverview(ctx context.Context) (*domain.AdminOverview
 		}
 		out.UsersByRole[role] = count
 		out.TotalUsers += count
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, fmt.Errorf("users by role iteration: %w", err)
 	}
 	rows.Close()
 
@@ -127,6 +130,10 @@ func (r *AdminStatsRepo) GetOverview(ctx context.Context) (*domain.AdminOverview
 		}
 		out.PaymentsByStatus[status] = count
 		out.TotalPayments += count
+	}
+	if err := payRows.Err(); err != nil {
+		payRows.Close()
+		return nil, fmt.Errorf("payments by status iteration: %w", err)
 	}
 	payRows.Close()
 
@@ -348,5 +355,3 @@ func (r *AdminStatsRepo) LearnersByClass(ctx context.Context) ([]*domain.ClassLe
 	}
 	return out, rows.Err()
 }
-
-var _ = time.Now

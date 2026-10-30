@@ -102,7 +102,7 @@ func (h *QuizHandler) List(w http.ResponseWriter, r *http.Request) {
 					questionCounts[id] = n
 				}
 			}
-			rows.Close()
+			closeRows(rows, h.log)
 		}
 
 		if rows, err := h.db.QueryContext(r.Context(),
@@ -116,7 +116,7 @@ func (h *QuizHandler) List(w http.ResponseWriter, r *http.Request) {
 					attemptCounts[id] = n
 				}
 			}
-			rows.Close()
+			closeRows(rows, h.log)
 		}
 	}
 
@@ -148,7 +148,7 @@ func (h *QuizHandler) List(w http.ResponseWriter, r *http.Request) {
 					classNames[id] = name
 				}
 			}
-			rows.Close()
+			closeRows(rows, h.log)
 		}
 	}
 
@@ -164,7 +164,7 @@ func (h *QuizHandler) List(w http.ResponseWriter, r *http.Request) {
 					subjectNames[id] = name
 				}
 			}
-			rows.Close()
+			closeRows(rows, h.log)
 		}
 	}
 

@@ -6,8 +6,10 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/lib/pq"
 
 	"github.com/Hisaalu/rogele/internal/domain"
 	"github.com/Hisaalu/rogele/internal/dto"
@@ -23,6 +25,13 @@ type HomeworkHandler struct {
 	log *slog.Logger
 }
 
+func closeRows(rows *sql.Rows, log *slog.Logger) {
+	if err := rows.Err(); err != nil {
+		log.Error("failed to iterate over sql rows", "error", err)
+	}
+	rows.Close()
+}
+
 func NewHomeworkHandler(svc *service.HomeworkService, db *sql.DB, log *slog.Logger) *HomeworkHandler {
 	return &HomeworkHandler{
 		svc: svc,
@@ -31,29 +40,90 @@ func NewHomeworkHandler(svc *service.HomeworkService, db *sql.DB, log *slog.Logg
 	}
 }
 
-func (h *HomeworkHandler) enrichHomework(ctx context.Context, hw *domain.Homework) dto.HomeworkResponse {
-	var className, subjectName *string
-	var submissionsCount int
-
-	if h.db != nil {
-		var cName string
-		if err := h.db.QueryRowContext(ctx, `SELECT name FROM classes WHERE id = $1`, hw.ClassID).Scan(&cName); err == nil {
-			className = &cName
-		}
-
-		var sName string
-		if err := h.db.QueryRowContext(ctx, `SELECT name FROM subjects WHERE id = $1`, hw.SubjectID).Scan(&sName); err == nil {
-			subjectName = &sName
-		}
-
-		_ = h.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM homework_submissions WHERE homework_id = $1`, hw.ID).Scan(&submissionsCount)
+func (h *HomeworkHandler) enrichHomeworks(ctx context.Context, hws []*domain.Homework) []dto.HomeworkResponse {
+	if len(hws) == 0 {
+		return []dto.HomeworkResponse{}
 	}
 
-	res := dto.HomeworkFromDomain(hw)
-	res.ClassName = className
-	res.SubjectName = subjectName
-	res.SubmissionsCount = submissionsCount
-	return res
+	classIDs := make([]int64, 0, len(hws))
+	subjectIDs := make([]int64, 0, len(hws))
+	homeworkIDs := make([]int64, 0, len(hws))
+	seenClass := map[int64]bool{}
+	seenSubject := map[int64]bool{}
+
+	for _, hw := range hws {
+		if !seenClass[hw.ClassID] {
+			seenClass[hw.ClassID] = true
+			classIDs = append(classIDs, hw.ClassID)
+		}
+		if !seenSubject[hw.SubjectID] {
+			seenSubject[hw.SubjectID] = true
+			subjectIDs = append(subjectIDs, hw.SubjectID)
+		}
+		homeworkIDs = append(homeworkIDs, hw.ID)
+	}
+
+	classNames := map[int64]string{}
+	subjectNames := map[int64]string{}
+	submissionCounts := map[int64]int{}
+
+	if h.db != nil {
+		if rows, err := h.db.QueryContext(ctx,
+			`SELECT id, name FROM classes WHERE id = ANY($1)`,
+			pq.Array(classIDs),
+		); err == nil {
+			for rows.Next() {
+				var id int64
+				var name string
+				if rows.Scan(&id, &name) == nil {
+					classNames[id] = name
+				}
+			}
+			closeRows(rows, h.log)
+		}
+
+		if rows, err := h.db.QueryContext(ctx,
+			`SELECT id, name FROM subjects WHERE id = ANY($1)`,
+			pq.Array(subjectIDs),
+		); err == nil {
+			for rows.Next() {
+				var id int64
+				var name string
+				if rows.Scan(&id, &name) == nil {
+					subjectNames[id] = name
+				}
+			}
+			closeRows(rows, h.log)
+		}
+
+		if rows, err := h.db.QueryContext(ctx,
+			`SELECT homework_id, COUNT(*)::int FROM homework_submissions WHERE homework_id = ANY($1) GROUP BY homework_id`,
+			pq.Array(homeworkIDs),
+		); err == nil {
+			for rows.Next() {
+				var id int64
+				var n int
+				if rows.Scan(&id, &n) == nil {
+					submissionCounts[id] = n
+				}
+			}
+			closeRows(rows, h.log)
+		}
+	}
+
+	out := make([]dto.HomeworkResponse, 0, len(hws))
+	for _, hw := range hws {
+		res := dto.HomeworkFromDomain(hw)
+		if name, ok := classNames[hw.ClassID]; ok {
+			res.ClassName = &name
+		}
+		if name, ok := subjectNames[hw.SubjectID]; ok {
+			res.SubjectName = &name
+		}
+		res.SubmissionsCount = submissionCounts[hw.ID]
+		out = append(out, res)
+	}
+	return out
 }
 
 func (h *HomeworkHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -97,11 +167,7 @@ func (h *HomeworkHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := make([]dto.HomeworkResponse, 0, len(homeworks))
-	for _, hw := range homeworks {
-		out = append(out, h.enrichHomework(r.Context(), hw))
-	}
-	httputil.JSON(w, http.StatusOK, out)
+	httputil.JSON(w, http.StatusOK, h.enrichHomeworks(r.Context(), homeworks))
 }
 
 func (h *HomeworkHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -121,7 +187,12 @@ func (h *HomeworkHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.JSON(w, http.StatusOK, h.enrichHomework(r.Context(), hw))
+	out := h.enrichHomeworks(r.Context(), []*domain.Homework{hw})
+	if len(out) == 0 {
+		httputil.JSON(w, http.StatusOK, dto.HomeworkFromDomain(hw))
+		return
+	}
+	httputil.JSON(w, http.StatusOK, out[0])
 }
 
 func (h *HomeworkHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -152,7 +223,12 @@ func (h *HomeworkHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.JSON(w, http.StatusCreated, h.enrichHomework(r.Context(), hw))
+	out := h.enrichHomeworks(r.Context(), []*domain.Homework{hw})
+	if len(out) == 0 {
+		httputil.JSON(w, http.StatusCreated, dto.HomeworkFromDomain(hw))
+		return
+	}
+	httputil.JSON(w, http.StatusCreated, out[0])
 }
 
 func (h *HomeworkHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -185,7 +261,12 @@ func (h *HomeworkHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.JSON(w, http.StatusOK, h.enrichHomework(r.Context(), hw))
+	out := h.enrichHomeworks(r.Context(), []*domain.Homework{hw})
+	if len(out) == 0 {
+		httputil.JSON(w, http.StatusOK, dto.HomeworkFromDomain(hw))
+		return
+	}
+	httputil.JSON(w, http.StatusOK, out[0])
 }
 
 func (h *HomeworkHandler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -313,13 +394,19 @@ func (h *HomeworkHandler) MySubmissions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	f := repository.HomeworkFilter{
-		Limit: 50,
+	submissions, err := h.svc.ListMySubmissions(r.Context(), actor)
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
 	}
 
-	_ = f
-	_ = actor
-	httputil.JSON(w, http.StatusOK, []dto.SubmissionResponse{})
+	filesMap := make(map[int64][]*domain.HomeworkSubmissionFile)
+	for _, s := range submissions {
+		files, _ := h.svc.ListSubmissionFiles(r.Context(), s.ID, actor)
+		filesMap[s.ID] = files
+	}
+
+	httputil.JSON(w, http.StatusOK, dto.SubmissionsFromDomain(submissions, filesMap))
 }
 
 func (h *HomeworkHandler) Submit(w http.ResponseWriter, r *http.Request) {
@@ -342,7 +429,9 @@ func (h *HomeworkHandler) Submit(w http.ResponseWriter, r *http.Request) {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
-	httputil.JSON(w, http.StatusCreated, dto.SubmissionFromDomain(sub, nil))
+
+	files, _ := h.svc.ListSubmissionFiles(r.Context(), sub.ID, actor)
+	httputil.JSON(w, http.StatusCreated, dto.SubmissionFromDomain(sub, files))
 }
 
 func (h *HomeworkHandler) Grade(w http.ResponseWriter, r *http.Request) {
@@ -369,7 +458,9 @@ func (h *HomeworkHandler) GradeSubmission(w http.ResponseWriter, r *http.Request
 		httputil.DomainError(w, err, h.log)
 		return
 	}
-	httputil.JSON(w, http.StatusOK, dto.SubmissionFromDomain(sub, nil))
+
+	files, _ := h.svc.ListSubmissionFiles(r.Context(), sub.ID, actor)
+	httputil.JSON(w, http.StatusOK, dto.SubmissionFromDomain(sub, files))
 }
 
 func (h *HomeworkHandler) DeleteSubmission(w http.ResponseWriter, r *http.Request) {
@@ -491,3 +582,5 @@ func (h *HomeworkHandler) actor(w http.ResponseWriter, r *http.Request) (service
 		Role:   claims.Role,
 	}, true
 }
+
+var _ = time.Now

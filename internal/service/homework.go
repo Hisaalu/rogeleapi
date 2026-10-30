@@ -69,7 +69,7 @@ func (s *HomeworkService) Create(ctx context.Context, teacherID int64, in Create
 		ClassID:     in.ClassID,
 		SubjectID:   in.SubjectID,
 		TeacherID:   teacherID,
-		DueDate:     in.DueDate,
+		DueDate:     in.DueDate.UTC(),
 		IsActive:    true,
 	}
 	created, err := s.repo.Create(ctx, hw)
@@ -132,10 +132,19 @@ func (s *HomeworkService) List(ctx context.Context, actor ActorContext, f reposi
 			return []*domain.Homework{}, nil
 		}
 		f.ClassID = classID
+		active := true
+		f.IsActive = &active
 	default:
 		return nil, domain.ErrForbidden
 	}
 	return s.repo.List(ctx, f)
+}
+
+func (s *HomeworkService) ListMySubmissions(ctx context.Context, actor ActorContext) ([]*domain.HomeworkSubmission, error) {
+	if actor.Role != domain.RoleLearner && actor.Role != domain.RoleExternal {
+		return []*domain.HomeworkSubmission{}, nil
+	}
+	return s.repo.ListSubmissionsByStudent(ctx, actor.UserID)
 }
 
 func (s *HomeworkService) Update(ctx context.Context, id int64, actor ActorContext, in UpdateHomeworkInput) (*domain.Homework, error) {
@@ -160,7 +169,7 @@ func (s *HomeworkService) Update(ctx context.Context, id int64, actor ActorConte
 		hw.SubjectID = *in.SubjectID
 	}
 	if in.DueDate != nil {
-		hw.DueDate = *in.DueDate
+		hw.DueDate = in.DueDate.UTC()
 	}
 	if in.IsActive != nil {
 		hw.IsActive = *in.IsActive
@@ -273,6 +282,14 @@ func (s *HomeworkService) ListSubmissions(ctx context.Context, homeworkID int64,
 		if classID == nil || *classID != hw.ClassID {
 			return nil, fmt.Errorf("%w: homework is not for your class", domain.ErrForbidden)
 		}
+		own, err := s.repo.GetSubmission(ctx, homeworkID, actor.UserID)
+		if err != nil {
+			if err == domain.ErrNotFound {
+				return []*domain.HomeworkSubmission{}, nil
+			}
+			return nil, err
+		}
+		return []*domain.HomeworkSubmission{own}, nil
 	} else if actor.Role == domain.RoleTeacher {
 		if hw.TeacherID != actor.UserID {
 			return nil, fmt.Errorf("%w: teachers can only view their own homework", domain.ErrForbidden)
@@ -293,6 +310,9 @@ func (s *HomeworkService) Submit(ctx context.Context, homeworkID int64, actor Ac
 		return nil, fmt.Errorf("%w: homework is not active", domain.ErrForbidden)
 	}
 
+	now := time.Now().UTC()
+	dueDate := hw.DueDate.UTC()
+
 	existing, err := s.repo.GetSubmission(ctx, homeworkID, actor.UserID)
 	if err == nil && existing != nil {
 		if string(existing.Status) == "graded" {
@@ -300,18 +320,17 @@ func (s *HomeworkService) Submit(ctx context.Context, homeworkID int64, actor Ac
 		}
 
 		existing.TextAnswer = textAnswer
-		if time.Now().After(hw.DueDate) {
+		if now.After(dueDate) {
 			existing.Status = domain.HomeworkStatus("late")
 		} else {
 			existing.Status = domain.HomeworkStatus("submitted")
 		}
-		now := time.Now()
 		existing.SubmittedAt = &now
 
 		if err := s.repo.UpdateSubmission(ctx, existing); err != nil {
 			return nil, err
 		}
-		return existing, nil
+		return s.repo.GetSubmissionByID(ctx, existing.ID)
 	}
 
 	if err != nil && err != domain.ErrNotFound {
@@ -319,10 +338,9 @@ func (s *HomeworkService) Submit(ctx context.Context, homeworkID int64, actor Ac
 	}
 
 	status := domain.HomeworkStatus("submitted")
-	if time.Now().After(hw.DueDate) {
+	if now.After(dueDate) {
 		status = domain.HomeworkStatus("late")
 	}
-	now := time.Now()
 
 	sub := &domain.HomeworkSubmission{
 		HomeworkID:  homeworkID,
@@ -349,9 +367,19 @@ func (s *HomeworkService) GradeSubmission(ctx context.Context, submissionID int6
 		return nil, err
 	}
 
+	if grade < 0 {
+		grade = 0
+	}
+	if grade > 100 {
+		grade = 100
+	}
+
+	now := time.Now().UTC()
+
 	sub.Grade = &grade
 	sub.Feedback = &feedback
 	sub.Status = domain.HomeworkStatus("graded")
+	sub.GradedAt = &now
 
 	if err := s.repo.UpdateSubmission(ctx, sub); err != nil {
 		return nil, err
@@ -406,6 +434,9 @@ func (s *HomeworkService) ListSubmissionFiles(ctx context.Context, submissionID 
 	}
 	if err := s.canView(ctx, hw, actor); err != nil {
 		return nil, err
+	}
+	if actor.Role == domain.RoleLearner && sub.StudentID != actor.UserID {
+		return nil, fmt.Errorf("%w: you can only view your own submission files", domain.ErrForbidden)
 	}
 	return s.repo.ListSubmissionFiles(ctx, submissionID)
 }
