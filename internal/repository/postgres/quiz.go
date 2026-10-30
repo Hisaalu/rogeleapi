@@ -710,4 +710,57 @@ func (r *QuizRepo) GetQuizPerformanceByDay(ctx context.Context, days int) ([]rep
 	return results, rows.Err()
 }
 
+func buildQuizWhere(f repository.QuizFilter) (string, []any) {
+	var where []string
+	var args []any
+	i := 1
+
+	if f.TeacherID != nil {
+		where = append(where, fmt.Sprintf("teacher_id = $%d", i))
+		args = append(args, *f.TeacherID)
+		i++
+	}
+	if f.ClassID != nil {
+		where = append(where, fmt.Sprintf("class_id = $%d", i))
+		args = append(args, *f.ClassID)
+		i++
+	}
+	if f.SubjectID != nil {
+		where = append(where, fmt.Sprintf("subject_id = $%d", i))
+		args = append(args, *f.SubjectID)
+		i++
+	}
+	if f.Published != nil {
+		where = append(where, fmt.Sprintf("is_published = $%d", i))
+		args = append(args, *f.Published)
+		i++
+	}
+	if f.Search != "" {
+		where = append(where, fmt.Sprintf("(title ILIKE $%d OR description ILIKE $%d)", i, i))
+		args = append(args, "%"+f.Search+"%")
+		i++
+	}
+
+	if f.MinQuestions > 0 {
+		where = append(where, fmt.Sprintf(
+			"(SELECT COUNT(*) FROM quiz_questions WHERE quiz_id = quizzes.id) >= $%d", i,
+		))
+		args = append(args, f.MinQuestions)
+		i++
+	}
+
+	return joinAnd(where), args
+}
+
+func (r *QuizRepo) Count(ctx context.Context, f repository.QuizFilter) (int, error) {
+	where, args := buildQuizWhere(f)
+	query := `SELECT COUNT(*) FROM quizzes`
+	if len(where) > 0 {
+		query += " WHERE " + where
+	}
+	var n int
+	err := r.db.QueryRowContext(ctx, query, args...).Scan(&n)
+	return n, err
+}
+
 var _ repository.QuizRepository = (*QuizRepo)(nil)

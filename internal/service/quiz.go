@@ -140,6 +140,7 @@ func (s *QuizService) List(ctx context.Context, actor ActorContext, f repository
 			return []*domain.Quiz{}, nil
 		}
 		f.ClassID = classID
+		f.MinQuestions = 1
 	default:
 		return nil, domain.ErrForbidden
 	}
@@ -376,7 +377,6 @@ func (s *QuizService) StartAttempt(ctx context.Context, quizID int64, actor Acto
 				for _, question := range questions {
 					qMap[question.ID] = question
 				}
-
 				for _, ans := range savedAnswers {
 					if question, ok := qMap[ans.QuestionID]; ok {
 						if ans.SelectedAnswer != nil && question.CorrectAnswer != nil {
@@ -387,20 +387,15 @@ func (s *QuizService) StartAttempt(ctx context.Context, quizID int64, actor Acto
 						}
 					}
 				}
-
 				totalQuestions := len(questions)
 				score := 0
 				if totalQuestions > 0 {
 					score = correct * 100 / totalQuestions
 				}
-
 				existing.Score = &score
 				existing.TotalQuestions = &totalQuestions
 				existing.CorrectAnswers = &correct
-
 				_ = s.quizzes.UpdateAttempt(ctx, existing)
-
-				return nil, fmt.Errorf("%w: your previous attempt expired and was auto-submitted", domain.ErrForbidden)
 			} else {
 				return existing, nil
 			}
@@ -717,4 +712,27 @@ func (s *QuizService) SaveSingleAnswer(ctx context.Context, attemptID int64, act
 		SelectedAnswer: selectedAnswer,
 		IsCorrect:      isCorrect,
 	})
+}
+
+func (s *QuizService) CountList(ctx context.Context, actor ActorContext, f repository.QuizFilter) (int, error) {
+	switch actor.Role {
+	case domain.RoleAdmin:
+	case domain.RoleTeacher:
+		tid := actor.UserID
+		f.TeacherID = &tid
+	case domain.RoleLearner, domain.RoleExternal:
+		pub := true
+		f.Published = &pub
+		classID, err := s.learnerClassID(ctx, actor)
+		if err != nil {
+			return 0, err
+		}
+		if classID == nil {
+			return 0, nil
+		}
+		f.ClassID = classID
+	default:
+		return 0, domain.ErrForbidden
+	}
+	return s.quizzes.Count(ctx, f)
 }

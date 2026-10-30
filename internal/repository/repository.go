@@ -100,13 +100,14 @@ type HomeworkRepository interface {
 }
 
 type QuizFilter struct {
-	TeacherID *int64
-	ClassID   *int64
-	SubjectID *int64
-	Published *bool
-	Search    string
-	Limit     int
-	Offset    int
+	TeacherID    *int64
+	ClassID      *int64
+	SubjectID    *int64
+	Published    *bool
+	Search       string
+	Limit        int
+	Offset       int
+	MinQuestions int
 }
 
 type DailyPerformance struct {
@@ -147,6 +148,7 @@ type QuizRepository interface {
 	GetGlobalAverageScore(ctx context.Context) (int, error)
 
 	GetQuizPerformanceByDay(ctx context.Context, days int) ([]DailyPerformance, error)
+	Count(ctx context.Context, f QuizFilter) (int, error)
 }
 
 type SubscriptionFilter struct {

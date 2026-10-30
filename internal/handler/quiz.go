@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/lib/pq"
 
 	"github.com/Hisaalu/rogele/internal/domain"
 	"github.com/Hisaalu/rogele/internal/dto"
@@ -65,34 +66,141 @@ func (h *QuizHandler) List(w http.ResponseWriter, r *http.Request) {
 		f.TeacherID = &actor.UserID
 	}
 
+	if v := r.URL.Query().Get("class_id"); v != "" {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			f.ClassID = &id
+		}
+	}
+
 	list, err := h.svc.List(r.Context(), actor, f)
 	if err != nil {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
 
+	total, _ := h.svc.CountList(r.Context(), actor, f)
+
+	ids := make([]int64, 0, len(list))
+	for _, q := range list {
+		ids = append(ids, q.ID)
+	}
+
+	questionCounts := map[int64]int{}
+	attemptCounts := map[int64]int{}
+	classNames := map[int64]string{}
+	subjectNames := map[int64]string{}
+
+	if len(ids) > 0 {
+		if rows, err := h.db.QueryContext(r.Context(),
+			`SELECT quiz_id, COUNT(*)::int FROM quiz_questions WHERE quiz_id = ANY($1) GROUP BY quiz_id`,
+			pq.Array(ids),
+		); err == nil {
+			for rows.Next() {
+				var id int64
+				var n int
+				if rows.Scan(&id, &n) == nil {
+					questionCounts[id] = n
+				}
+			}
+			rows.Close()
+		}
+
+		if rows, err := h.db.QueryContext(r.Context(),
+			`SELECT quiz_id, COUNT(*)::int FROM quiz_attempts WHERE quiz_id = ANY($1) GROUP BY quiz_id`,
+			pq.Array(ids),
+		); err == nil {
+			for rows.Next() {
+				var id int64
+				var n int
+				if rows.Scan(&id, &n) == nil {
+					attemptCounts[id] = n
+				}
+			}
+			rows.Close()
+		}
+	}
+
+	classIDs := make([]int64, 0)
+	seenClass := map[int64]bool{}
+	subjectIDs := make([]int64, 0)
+	seenSubject := map[int64]bool{}
+
+	for _, q := range list {
+		if q.ClassID != nil && !seenClass[*q.ClassID] {
+			seenClass[*q.ClassID] = true
+			classIDs = append(classIDs, *q.ClassID)
+		}
+		if q.SubjectID != nil && !seenSubject[*q.SubjectID] {
+			seenSubject[*q.SubjectID] = true
+			subjectIDs = append(subjectIDs, *q.SubjectID)
+		}
+	}
+
+	if len(classIDs) > 0 {
+		if rows, err := h.db.QueryContext(r.Context(),
+			`SELECT id, name FROM classes WHERE id = ANY($1)`,
+			pq.Array(classIDs),
+		); err == nil {
+			for rows.Next() {
+				var id int64
+				var name string
+				if rows.Scan(&id, &name) == nil {
+					classNames[id] = name
+				}
+			}
+			rows.Close()
+		}
+	}
+
+	if len(subjectIDs) > 0 {
+		if rows, err := h.db.QueryContext(r.Context(),
+			`SELECT id, name FROM subjects WHERE id = ANY($1)`,
+			pq.Array(subjectIDs),
+		); err == nil {
+			for rows.Next() {
+				var id int64
+				var name string
+				if rows.Scan(&id, &name) == nil {
+					subjectNames[id] = name
+				}
+			}
+			rows.Close()
+		}
+	}
+
 	out := make([]dto.QuizResponse, 0, len(list))
 	for _, q := range list {
 		var className, subjectName *string
 		if q.ClassID != nil {
-			var name string
-			if err := h.db.QueryRowContext(r.Context(), `SELECT name FROM classes WHERE id = $1`, *q.ClassID).Scan(&name); err == nil {
+			if name, ok := classNames[*q.ClassID]; ok {
 				className = &name
 			}
 		}
 		if q.SubjectID != nil {
-			var name string
-			if err := h.db.QueryRowContext(r.Context(), `SELECT name FROM subjects WHERE id = $1`, *q.SubjectID).Scan(&name); err == nil {
+			if name, ok := subjectNames[*q.SubjectID]; ok {
 				subjectName = &name
 			}
 		}
-		qCount, _ := h.svc.CountQuestions(r.Context(), q.ID)
-		aCount, _ := h.svc.CountAttemptsForQuiz(r.Context(), q.ID)
-
-		out = append(out, dto.QuizWithExtras(q, className, subjectName, qCount, aCount))
+		out = append(out, dto.QuizWithExtras(
+			q, className, subjectName,
+			questionCounts[q.ID], attemptCounts[q.ID],
+		))
 	}
 
-	httputil.JSON(w, http.StatusOK, out)
+	lastPage := 1
+	if perPage > 0 && total > 0 {
+		lastPage = (total + perPage - 1) / perPage
+	}
+
+	httputil.JSON(w, http.StatusOK, map[string]any{
+		"data": out,
+		"meta": map[string]int{
+			"page":      page,
+			"per_page":  perPage,
+			"total":     total,
+			"last_page": lastPage,
+		},
+	})
 }
 
 func (h *QuizHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -258,7 +366,6 @@ func (h *QuizHandler) AddQuestion(w http.ResponseWriter, r *http.Request) {
 	var bulkReq struct {
 		Questions []dto.CreateQuestionRequest `json:"questions"`
 	}
-
 	var singleReq dto.CreateQuestionRequest
 
 	if err := json.Unmarshal(bodyBytes, &bulkReq); err == nil && len(bulkReq.Questions) > 0 {
@@ -503,7 +610,6 @@ func (h *QuizHandler) AddBulkQuestions(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "quiz id must be an integer")
 		return
 	}
-
 	var req struct {
 		Questions []dto.CreateQuestionRequest `json:"questions"`
 	}
@@ -511,7 +617,6 @@ func (h *QuizHandler) AddBulkQuestions(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
 		return
 	}
-
 	for _, q := range req.Questions {
 		_, err := h.svc.AddQuestion(r.Context(), quizID, actor, service.CreateQuestionInput{
 			Question:      q.Question,
@@ -528,7 +633,6 @@ func (h *QuizHandler) AddBulkQuestions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
 	httputil.JSON(w, http.StatusCreated, map[string]string{"message": "Questions added successfully"})
 }
 
@@ -541,13 +645,11 @@ func (h *QuizHandler) GetGlobalStats(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusForbidden, "FORBIDDEN", "only teachers and admins can view global stats")
 		return
 	}
-
 	avg, err := h.svc.GetGlobalAverageScore(r.Context())
 	if err != nil {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
-
 	httputil.JSON(w, http.StatusOK, map[string]int{"average_score": avg})
 }
 
@@ -560,19 +662,16 @@ func (h *QuizHandler) GetPerformanceChart(w http.ResponseWriter, r *http.Request
 		httputil.Error(w, http.StatusForbidden, "FORBIDDEN", "only teachers and admins can view analytics")
 		return
 	}
-
 	daysStr := r.URL.Query().Get("days")
 	days, _ := strconv.Atoi(daysStr)
 	if days <= 0 {
 		days = 30
 	}
-
 	perf, err := h.svc.GetQuizPerformanceByDay(r.Context(), days)
 	if err != nil {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
-
 	httputil.JSON(w, http.StatusOK, perf)
 }
 
@@ -586,18 +685,15 @@ func (h *QuizHandler) SaveAttemptAnswer(w http.ResponseWriter, r *http.Request) 
 		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "attempt id must be an integer")
 		return
 	}
-
 	var req dto.AnswerItem
 	if err := httputil.DecodeJSON(r, &req); err != nil {
 		httputil.Error(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
 		return
 	}
-
 	err = h.svc.SaveSingleAnswer(r.Context(), attemptID, actor, req.QuestionID, req.SelectedAnswer)
 	if err != nil {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
-
 	httputil.JSON(w, http.StatusOK, map[string]string{"status": "saved"})
 }
