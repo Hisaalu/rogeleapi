@@ -12,6 +12,7 @@ dependencies = [
     "numpy>=2.0.0",
     "uvicorn[standard]>=0.54.0",
     "pyjwt>=2.15.1",
+    "cachetools>=7.2.7",
 ]
 
 [dependency-groups]

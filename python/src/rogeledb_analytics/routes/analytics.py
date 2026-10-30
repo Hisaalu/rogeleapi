@@ -5,6 +5,7 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
+from cachetools import TTLCache
 
 from ..go_client import GoAPIError, go_client
 
@@ -13,6 +14,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 Interval = Literal["day", "week", "month"]
+
+teacher_cache = TTLCache(maxsize=500, ttl=300)
 
 
 def _default_dates() -> tuple[str, str]:
@@ -447,6 +450,12 @@ async def teacher_overview(
     teacher_id: int = Query(..., description="The ID of the teacher"),
 ) -> dict:
     """Single Source of Truth for the Teacher Dashboard."""
+    
+    if teacher_id in teacher_cache:
+        logger.info(f"Cache HIT for teacher overview {teacher_id}")
+        return teacher_cache[teacher_id]
+
+    logger.info(f"Cache MISS for teacher overview {teacher_id} - calculating...")
     try:
         quizzes_payload = await go_client.get(f"/quizzes?teacher_id={teacher_id}&per_page=100")
         quizzes = []
@@ -499,12 +508,16 @@ async def teacher_overview(
             logger.warning(f"Failed to fetch learner counts: {e}")
             total_students = 0
 
-        return {
+        result = {
             "average_score": avg_score,
             "total_students": total_students,
             "total_quizzes": len(quizzes),
             "attempts_counted": valid_count
         }
+        
+        teacher_cache[teacher_id] = result
+        
+        return result
         
     except GoAPIError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
