@@ -65,39 +65,39 @@ func (r *EmailRepo) UpsertTemplate(ctx context.Context, t *domain.EmailTemplate)
 }
 
 func (r *EmailRepo) Enqueue(ctx context.Context, job *domain.EmailJob) (*domain.EmailJob, error) {
-    varsJSON, err := json.Marshal(job.Variables)
-    if err != nil {
-        return nil, fmt.Errorf("marshal variables: %w", err)
-    }
+	varsJSON, err := json.Marshal(job.Variables)
+	if err != nil {
+		return nil, fmt.Errorf("marshal variables: %w", err)
+	}
 
-    query := `
-        INSERT INTO email_queue (
-            to_email, to_name, template_name, subject, variables, 
-            scheduled_at, status, campaign_id, max_attempts
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        RETURNING id, to_email, to_name, template_name, subject, variables, scheduled_at, status, created_at
-    `
-    
-    var out domain.EmailJob
-    var returnedVars []byte
-    
-    err = r.db.QueryRowContext(ctx, query,
-        job.ToEmail, job.ToName, job.TemplateName, job.Subject, varsJSON, 
-        job.ScheduledAt, job.Status, job.CampaignID, 3,
-    ).Scan(
-        &out.ID, &out.ToEmail, &out.ToName, &out.TemplateName, &out.Subject, 
-        &returnedVars, &out.ScheduledAt, &out.Status, &out.CreatedAt,
-    )
-    
-    if err != nil {
-        return nil, err
-    }
-    
-    if len(returnedVars) > 0 {
-        _ = json.Unmarshal(returnedVars, &out.Variables)
-    }
-    
-    return &out, nil
+	query := `
+		INSERT INTO email_queue (
+			to_email, to_name, template_name, subject, variables, 
+			scheduled_at, status, campaign_id, max_attempts
+		) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9)
+		RETURNING id, to_email, to_name, template_name, subject, variables, scheduled_at, status, created_at
+	`
+	
+	var out domain.EmailJob
+	var returnedVars []byte
+	
+	err = r.db.QueryRowContext(ctx, query,
+		job.ToEmail, job.ToName, job.TemplateName, job.Subject, string(varsJSON), // <--- string() is key
+		job.ScheduledAt, job.Status, job.CampaignID, 3,
+	).Scan(
+		&out.ID, &out.ToEmail, &out.ToName, &out.TemplateName, &out.Subject, 
+		&returnedVars, &out.ScheduledAt, &out.Status, &out.CreatedAt,
+	)
+	
+	if err != nil {
+		return nil, err
+	}
+	
+	if len(returnedVars) > 0 {
+		_ = json.Unmarshal(returnedVars, &out.Variables)
+	}
+	
+	return &out, nil
 }
 
 func (r *EmailRepo) ClaimBatch(ctx context.Context, limit int) ([]*domain.EmailJob, error) {
