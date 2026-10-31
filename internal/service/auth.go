@@ -230,8 +230,9 @@ func (s *AuthService) ForgotPassword(ctx context.Context, in ForgotPasswordInput
 			"FirstName": derefOr(u.FirstName, "there"),
 			"ResetLink": resetLink,
 		}
+
 		if _, err := s.mailer.Enqueue(ctx, "password_reset", u.Email, u.FirstName, vars); err != nil {
-			return err
+			return fmt.Errorf("failed to queue email: %w", err) 
 		}
 	}
 

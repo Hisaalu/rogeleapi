@@ -23,8 +23,6 @@ func NewEmailRepo(db *sql.DB) *EmailRepo {
 	return &EmailRepo{db: db}
 }
 
-// ─── Templates ───────────────────────────────────────────────────────────────
-
 const templateColumns = `id, name, subject, body, created_by, created_at, updated_at`
 
 func (r *EmailRepo) ListTemplates(ctx context.Context) ([]*domain.EmailTemplate, error) {
@@ -66,30 +64,42 @@ func (r *EmailRepo) UpsertTemplate(ctx context.Context, t *domain.EmailTemplate)
 	return result, nil
 }
 
-// ─── Queue ───────────────────────────────────────────────────────────────────
-
 func (r *EmailRepo) Enqueue(ctx context.Context, job *domain.EmailJob) (*domain.EmailJob, error) {
-	vars, _ := json.Marshal(job.Variables)
-	query := `
-		INSERT INTO email_queue
-			(to_email, to_name, template_name, subject, variables, campaign_id, scheduled_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
-		RETURNING id, to_email, to_name, template_name, subject, variables,
-		          campaign_id, attempts, max_attempts, scheduled_at, status, created_at
-	`
-	row := r.db.QueryRowContext(ctx, query,
-		job.ToEmail, job.ToName, job.TemplateName, job.Subject, vars,
-		job.CampaignID, job.ScheduledAt,
-	)
-	result, err := scanJob(row)
-	if err != nil {
-		return nil, dberr.Translate(err)
-	}
-	return result, nil
+    varsJSON, err := json.Marshal(job.Variables)
+    if err != nil {
+        return nil, fmt.Errorf("marshal variables: %w", err)
+    }
+
+    query := `
+        INSERT INTO email_queue (
+            to_email, to_name, template_name, subject, variables, 
+            scheduled_at, status, campaign_id, max_attempts
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id, to_email, to_name, template_name, subject, variables, scheduled_at, status, created_at
+    `
+    
+    var out domain.EmailJob
+    var returnedVars []byte
+    
+    err = r.db.QueryRowContext(ctx, query,
+        job.ToEmail, job.ToName, job.TemplateName, job.Subject, varsJSON, 
+        job.ScheduledAt, job.Status, job.CampaignID, 3,
+    ).Scan(
+        &out.ID, &out.ToEmail, &out.ToName, &out.TemplateName, &out.Subject, 
+        &returnedVars, &out.ScheduledAt, &out.Status, &out.CreatedAt,
+    )
+    
+    if err != nil {
+        return nil, err
+    }
+    
+    if len(returnedVars) > 0 {
+        _ = json.Unmarshal(returnedVars, &out.Variables)
+    }
+    
+    return &out, nil
 }
 
-// ClaimBatch locks up to `limit` queued jobs and returns them.
-// Uses FOR UPDATE SKIP LOCKED for safe concurrent workers.
 func (r *EmailRepo) ClaimBatch(ctx context.Context, limit int) ([]*domain.EmailJob, error) {
 	query := `
 		WITH claimed AS (
@@ -145,8 +155,6 @@ func (r *EmailRepo) MarkJobFailed(ctx context.Context, id int64, reason string) 
 	`, id, reason)
 	return err
 }
-
-// ─── Logs ────────────────────────────────────────────────────────────────────
 
 func (r *EmailRepo) CreateLog(ctx context.Context, l *domain.EmailLog) (*domain.EmailLog, error) {
 	query := `
@@ -230,8 +238,6 @@ func (r *EmailRepo) ListLogs(ctx context.Context, f LogFilter) ([]*domain.EmailL
 	return logs, rows.Err()
 }
 
-// ─── Campaigns ───────────────────────────────────────────────────────────────
-
 const campaignColumns = `
 	id, subject, body, recipient_type, recipient_ids, custom_emails,
 	total_recipients, sent_count, failed_count, status, created_by,
@@ -310,8 +316,6 @@ func (r *EmailRepo) IncrementCampaignStats(ctx context.Context, id int64, sentDe
 	`, id, sentDelta, failedDelta)
 	return err
 }
-
-// ─── Scanners ────────────────────────────────────────────────────────────────
 
 type emailScanner interface {
 	Scan(dest ...any) error
