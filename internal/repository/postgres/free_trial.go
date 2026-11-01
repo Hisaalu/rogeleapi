@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"time"
+	"fmt"
 
 	"github.com/Hisaalu/rogele/internal/dberr"
 	"github.com/Hisaalu/rogele/internal/domain"
@@ -96,11 +97,38 @@ func scanFreeTrial(row *sql.Row) (*domain.FreeTrial, error) {
 }
 
 func (r *FreeTrialRepo) GetDynamicTrial(ctx context.Context, userID int64, durationDays int, resetDate time.Time) (*domain.FreeTrial, error) {
+	upsertQuery := `
+		WITH calculated AS (
+			SELECT 
+				$1::bigint AS uid,
+				$2::int AS days,
+				$3::timestamptz AS start_dt
+		)
+		INSERT INTO free_trials (user_id, start_date, end_date, converted_to_subscriber) 
+		SELECT 
+			uid, 
+			start_dt, 
+			start_dt + (days || ' days')::interval, 
+			false
+		FROM calculated
+		ON CONFLICT (user_id) DO UPDATE 
+		SET start_date = EXCLUDED.start_date,
+		    end_date = EXCLUDED.end_date
+	`
+	
+	_, err := r.db.ExecContext(ctx, upsertQuery, userID, durationDays, resetDate)
+	if err != nil {
+		fmt.Printf("Error upserting trial: %v\n", err)
+		return nil, err
+	}
+
 	query := `
 		SELECT 
-			($3::timestamptz + ($2 || ' days')::interval)::timestamptz as dynamic_end_date,
-			(($3::timestamptz + ($2 || ' days')::interval)::date >= CURRENT_DATE) as is_in_trial,
-			GREATEST(0, (($3::timestamptz + ($2 || ' days')::interval)::date - CURRENT_DATE)) as days_remaining
+			end_date,
+			(end_date::date >= CURRENT_DATE) as is_in_trial,
+			GREATEST(0, (end_date::date - CURRENT_DATE)) as days_remaining
+		FROM free_trials
+		WHERE user_id = $1
 	`
 	
 	var (
@@ -109,14 +137,13 @@ func (r *FreeTrialRepo) GetDynamicTrial(ctx context.Context, userID int64, durat
 		daysRemain  int
 	)
 
-	_ = userID 
-	
-	err := r.db.QueryRowContext(ctx, query, userID, durationDays, resetDate).Scan(
+	err = r.db.QueryRowContext(ctx, query, userID).Scan(
 		&endDate, &isInTrial, &daysRemain,
 	)
 
 	if err != nil {
-		return &domain.FreeTrial{IsInTrial: false, DaysRemaining: 0}, nil
+		fmt.Printf("Error fetching trial after upsert: %v\n", err)
+		return nil, err
 	}
 
 	return &domain.FreeTrial{
