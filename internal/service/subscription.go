@@ -128,7 +128,6 @@ func (s *SubscriptionService) GetMyTrial(ctx context.Context, actor ActorContext
 
 	if now.Before(dynamicEndDate) {
 		trial.IsInTrial = true
-		
 		diff := dynamicEndDate.Sub(now)
 		trial.DaysRemaining = int(math.Ceil(diff.Hours() / 24.0))
 	} else {

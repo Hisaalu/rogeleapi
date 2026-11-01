@@ -46,7 +46,11 @@ func (r *PlanRepo) GetPlan(ctx context.Context, id int64) (*domain.SubscriptionP
 func (r *PlanRepo) GetFreePlan(ctx context.Context) (*domain.SubscriptionPlan, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, name, description, price, duration_days, is_active, created_at, updated_at
-		FROM subscription_plans WHERE price = 0 AND is_active = true LIMIT 1
+		FROM subscription_plans 
+		WHERE (price = 0 OR name ILIKE '%free%') 
+		  AND is_active = true 
+		ORDER BY price ASC 
+		LIMIT 1
 	`)
 
 	var (
