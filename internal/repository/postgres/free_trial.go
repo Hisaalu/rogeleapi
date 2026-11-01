@@ -97,11 +97,14 @@ func scanFreeTrial(row *sql.Row) (*domain.FreeTrial, error) {
 func (r *FreeTrialRepo) GetDynamicTrial(ctx context.Context, userID int64, durationDays int) (*domain.FreeTrial, error) {
 	query := `
 		SELECT 
-			id, user_id, start_date, 
-			(start_date::date + ($2 || ' days')::interval)::timestamptz as dynamic_end_date,
-			converted_to_subscriber, created_at,
-			(start_date::date + ($2 || ' days')::interval)::date >= CURRENT_DATE as is_in_trial,
-			GREATEST(0, (start_date::date + ($2 || ' days')::interval)::date - CURRENT_DATE) as days_remaining
+			id, 
+			user_id, 
+			start_date, 
+			(CURRENT_DATE + ($2 || ' days')::interval)::timestamptz as dynamic_end_date,
+			converted_to_subscriber, 
+			created_at,
+			true as is_in_trial,
+			$2::int as days_remaining
 		FROM free_trials 
 		WHERE user_id = $1
 	`
