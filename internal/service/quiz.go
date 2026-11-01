@@ -20,6 +20,7 @@ type CreateQuizInput struct {
 	IsPublished  bool
 	StartDate    *time.Time
 	EndDate      *time.Time
+	ShowResultsToStudents *bool
 }
 
 type UpdateQuizInput struct {
@@ -33,6 +34,7 @@ type UpdateQuizInput struct {
 	IsPublished  *bool
 	StartDate    *time.Time
 	EndDate      *time.Time
+	ShowResultsToStudents *bool
 }
 
 type CreateQuestionInput struct {
@@ -83,6 +85,11 @@ func (s *QuizService) Create(ctx context.Context, teacherID int64, in CreateQuiz
 		in.MaxAttempts = 3
 	}
 
+	showResults := true
+	if in.ShowResultsToStudents != nil {
+		showResults = *in.ShowResultsToStudents
+	}
+
 	status := "draft"
 	if in.IsPublished {
 		status = "published"
@@ -101,6 +108,7 @@ func (s *QuizService) Create(ctx context.Context, teacherID int64, in CreateQuiz
 		StartDate:    in.StartDate,
 		EndDate:      in.EndDate,
 		Status:       status,
+		ShowResultsToStudents: showResults,
 	}
 	created, err := s.quizzes.Create(ctx, q)
 	if err != nil {
@@ -205,6 +213,11 @@ func (s *QuizService) Update(ctx context.Context, id int64, actor ActorContext, 
 	if in.EndDate != nil {
 		q.EndDate = in.EndDate
 	}
+	
+	if in.ShowResultsToStudents != nil {
+		q.ShowResultsToStudents = *in.ShowResultsToStudents
+	}
+
 	wasPublished := q.IsPublished
 
 	if in.Title != nil {

@@ -17,6 +17,7 @@ type CreateQuizRequest struct {
 	IsPublished  bool       `json:"is_published,omitempty"`
 	StartDate    *time.Time `json:"start_date,omitempty"`
 	EndDate      *time.Time `json:"end_date,omitempty"`
+	ShowResultsToStudents *bool `json:"show_results_to_students,omitempty"`
 }
 
 type UpdateQuizRequest struct {
@@ -30,6 +31,7 @@ type UpdateQuizRequest struct {
 	IsPublished  *bool      `json:"is_published,omitempty"`
 	StartDate    *time.Time `json:"start_date,omitempty"`
 	EndDate      *time.Time `json:"end_date,omitempty"`
+	ShowResultsToStudents *bool `json:"show_results_to_students,omitempty"`
 }
 
 type CreateQuestionRequest struct {
@@ -73,6 +75,7 @@ type QuizResponse struct {
 	AttemptCount  int        `json:"attempt_count"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
+	ShowResultsToStudents bool `json:"show_results_to_students"`
 }
 
 type QuestionResponse struct {
@@ -137,6 +140,7 @@ func QuizFromDomain(q *domain.Quiz) QuizResponse {
 		MaxAttempts: q.MaxAttempts, IsPublished: q.IsPublished,
 		IsApproved: q.IsApproved, StartDate: q.StartDate, EndDate: q.EndDate,
 		Status: q.Status, CreatedAt: q.CreatedAt, UpdatedAt: q.UpdatedAt,
+		ShowResultsToStudents: q.ShowResultsToStudents,
 	}
 }
 
@@ -196,5 +200,6 @@ func QuizWithExtras(q *domain.Quiz, className, subjectName *string, qCount, aCou
 		StartDate: q.StartDate, EndDate: q.EndDate, Status: q.Status,
 		QuestionCount: qCount, AttemptCount: aCount,
 		CreatedAt: q.CreatedAt, UpdatedAt: q.UpdatedAt,
+		ShowResultsToStudents: q.ShowResultsToStudents,
 	}
 }

@@ -23,7 +23,7 @@ const quizColumns = `
 	id, title, description, subject_id, class_id, teacher_id,
 	time_limit, passing_score, max_attempts, is_published, is_approved,
 	approved_at, approved_by, start_date, end_date, status,
-	created_at, updated_at
+	show_results_to_students, created_at, updated_at
 `
 
 func (r *QuizRepo) Create(ctx context.Context, q *domain.Quiz) (*domain.Quiz, error) {
@@ -31,13 +31,13 @@ func (r *QuizRepo) Create(ctx context.Context, q *domain.Quiz) (*domain.Quiz, er
 		INSERT INTO quizzes (
 			title, description, subject_id, class_id, teacher_id,
 			time_limit, passing_score, max_attempts, is_published,
-			start_date, end_date, status
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+			start_date, end_date, status, show_results_to_students
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		RETURNING ` + quizColumns
 	row := r.db.QueryRowContext(ctx, query,
 		q.Title, q.Description, q.SubjectID, q.ClassID, q.TeacherID,
 		q.TimeLimit, q.PassingScore, q.MaxAttempts, q.IsPublished,
-		q.StartDate, q.EndDate, q.Status,
+		q.StartDate, q.EndDate, q.Status, q.ShowResultsToStudents,
 	)
 	result, err := scanQuiz(row)
 	if err != nil {
@@ -58,15 +58,15 @@ func (r *QuizRepo) Update(ctx context.Context, q *domain.Quiz) error {
 			time_limit = $5, passing_score = $6, max_attempts = $7,
 			is_published = $8, is_approved = $9, approved_at = $10,
 			approved_by = $11, start_date = $12, end_date = $13, status = $14,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE id = $15
+			show_results_to_students = $15, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $16
 	`
 	res, err := r.db.ExecContext(ctx, query,
 		q.Title, q.Description, q.SubjectID, q.ClassID,
 		q.TimeLimit, q.PassingScore, q.MaxAttempts,
 		q.IsPublished, q.IsApproved, q.ApprovedAt,
 		q.ApprovedBy, q.StartDate, q.EndDate, q.Status,
-		q.ID,
+		q.ShowResultsToStudents, q.ID,
 	)
 	if err != nil {
 		return dberr.Translate(fmt.Errorf("update quiz: %w", err))
@@ -428,7 +428,7 @@ func scanQuizRow(s quizScanner) (*domain.Quiz, error) {
 		&q.ID, &q.Title, &desc, &subjectID, &classID, &teacherID,
 		&timeLimit, &q.PassingScore, &q.MaxAttempts, &q.IsPublished, &q.IsApproved,
 		&approvedAt, &approvedBy, &startDate, &endDate, &q.Status,
-		&q.CreatedAt, &q.UpdatedAt,
+		&q.ShowResultsToStudents, &q.CreatedAt, &q.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err

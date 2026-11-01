@@ -246,6 +246,7 @@ func (h *QuizHandler) Create(w http.ResponseWriter, r *http.Request) {
 		IsPublished:  req.IsPublished,
 		StartDate:    req.StartDate,
 		EndDate:      req.EndDate,
+		ShowResultsToStudents: req.ShowResultsToStudents,
 	})
 	if err != nil {
 		httputil.DomainError(w, err, h.log)
@@ -280,6 +281,7 @@ func (h *QuizHandler) Update(w http.ResponseWriter, r *http.Request) {
 		IsPublished:  req.IsPublished,
 		StartDate:    req.StartDate,
 		EndDate:      req.EndDate,
+		ShowResultsToStudents: req.ShowResultsToStudents,
 	})
 	if err != nil {
 		httputil.DomainError(w, err, h.log)

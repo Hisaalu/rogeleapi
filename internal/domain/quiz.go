@@ -29,6 +29,7 @@ type Quiz struct {
 	Status       string     `json:"status"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
+	ShowResultsToStudents bool `json:"show_results_to_students"`
 }
 
 type QuizQuestion struct {
