@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/Hisaalu/rogele/internal/dberr"
 	"github.com/Hisaalu/rogele/internal/domain"
@@ -94,65 +95,38 @@ func scanFreeTrial(row *sql.Row) (*domain.FreeTrial, error) {
 	return &t, nil
 }
 
-func (r *FreeTrialRepo) GetDynamicTrial(ctx context.Context, userID int64, durationDays int) (*domain.FreeTrial, error) {
-	upsertQuery := `
-		INSERT INTO free_trials (user_id, start_date, end_date, converted_to_subscriber)
-		VALUES ($1, CURRENT_DATE, (CURRENT_DATE + ($2 || ' days')::interval)::timestamptz, false)
-		ON CONFLICT (user_id) DO NOTHING
-	`
-	
-	_, _ = r.db.ExecContext(ctx, upsertQuery, userID, durationDays)
-
-	selectQuery := `
+func (r *FreeTrialRepo) GetDynamicTrial(ctx context.Context, userID int64, durationDays int, resetDate time.Time) (*domain.FreeTrial, error) {
+	query := `
 		SELECT 
-			id, 
-			user_id, 
-			start_date, 
-			(CURRENT_DATE + ($2 || ' days')::interval)::timestamptz as dynamic_end_date,
-			converted_to_subscriber, 
-			created_at,
-			true as is_in_trial,
-			$2::int as days_remaining
-		FROM free_trials 
-		WHERE user_id = $1
+			($3::timestamptz + ($2 || ' days')::interval)::timestamptz as dynamic_end_date,
+			(($3::timestamptz + ($2 || ' days')::interval)::date >= CURRENT_DATE) as is_in_trial,
+			GREATEST(0, (($3::timestamptz + ($2 || ' days')::interval)::date - CURRENT_DATE)) as days_remaining
 	`
 	
 	var (
-		trial       domain.FreeTrial
-		userIDVal   sql.NullInt64
-		endDate     sql.NullTime
-		createdAt   sql.NullTime
+		endDate     time.Time
 		isInTrial   bool
 		daysRemain  int
 	)
 
-	err := r.db.QueryRowContext(ctx, selectQuery, userID, durationDays).Scan(
-		&trial.ID, &userIDVal, &trial.StartDate, &endDate,
-		&trial.ConvertedToSubscriber, &createdAt, &isInTrial, &daysRemain,
+	_ = userID 
+	
+	err := r.db.QueryRowContext(ctx, query, userID, durationDays, resetDate).Scan(
+		&endDate, &isInTrial, &daysRemain,
 	)
 
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, domain.ErrNotFound
-	}
 	if err != nil {
-		return nil, err
+		return &domain.FreeTrial{IsInTrial: false, DaysRemaining: 0}, nil
 	}
 
-	if userIDVal.Valid {
-		trial.UserID = &userIDVal.Int64
-	}
-	if endDate.Valid {
-		trial.EndDate = endDate.Time
-	}
-	if createdAt.Valid {
-		trial.CreatedAt = createdAt.Time
-	}
-
-	trial.IsInTrial = isInTrial
-	trial.DaysRemaining = daysRemain
-	trial.TotalDays = durationDays
-
-	return &trial, nil
+	return &domain.FreeTrial{
+		UserID:        &userID,
+		StartDate:     resetDate,
+		EndDate:       endDate,
+		IsInTrial:     isInTrial,
+		DaysRemaining: daysRemain,
+		TotalDays:     durationDays,
+	}, nil
 }
 
 var _ repository.FreeTrialRepository = (*FreeTrialRepo)(nil)

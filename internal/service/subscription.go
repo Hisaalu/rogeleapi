@@ -114,6 +114,8 @@ func (s *SubscriptionService) StartTrial(ctx context.Context, actor ActorContext
 
 func (s *SubscriptionService) GetMyTrial(ctx context.Context, actor ActorContext) (*domain.FreeTrial, error) {
 	durationDays := 14
+	var resetDate time.Time
+
 	if s.settings != nil {
 		val, err := s.settings.GetByKey(ctx, "trial.duration_days")
 		if err == nil && val != "" {
@@ -121,9 +123,15 @@ func (s *SubscriptionService) GetMyTrial(ctx context.Context, actor ActorContext
 				durationDays = parsed
 			}
 		}
+		
+		resetDate, _ = s.settings.GetSettingUpdatedAt(ctx, "trial.duration_days")
 	}
 
-	return s.trials.GetDynamicTrial(ctx, actor.UserID, durationDays)
+	if resetDate.IsZero() {
+		resetDate = time.Now()
+	}
+
+	return s.trials.GetDynamicTrial(ctx, actor.UserID, durationDays, resetDate)
 }
 
 func (s *SubscriptionService) Cancel(ctx context.Context, id int64, actor ActorContext) (*domain.Subscription, error) {

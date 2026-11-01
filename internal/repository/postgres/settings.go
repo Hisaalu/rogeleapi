@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"errors"
+	"time"
 
 )
 
@@ -44,12 +46,25 @@ func (r *SettingsRepo) ListPublicSettings(ctx context.Context) (map[string]strin
 
 func (r *SettingsRepo) Upsert(ctx context.Context, key, value string) error {
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO settings (setting_key, setting_value)
-		VALUES ($1, $2)
+		INSERT INTO settings (setting_key, setting_value, updated_at)
+		VALUES ($1, $2, CURRENT_TIMESTAMP)
 		ON CONFLICT (setting_key) DO UPDATE
-		SET setting_value = EXCLUDED.setting_value
+		SET setting_value = EXCLUDED.setting_value,
+		    updated_at = CURRENT_TIMESTAMP
 	`, key, value)
 	return err
+}
+
+func (r *SettingsRepo) GetSettingUpdatedAt(ctx context.Context, key string) (time.Time, error) {
+	var updatedAt sql.NullTime
+	err := r.db.QueryRowContext(ctx, `SELECT updated_at FROM settings WHERE setting_key = $1`, key).Scan(&updatedAt)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if updatedAt.Valid {
+		return updatedAt.Time, nil
+	}
+	return time.Time{}, errors.New("no updated_at")
 }
 
 func (r *SettingsRepo) GetByKey(ctx context.Context, key string) (string, error) {
