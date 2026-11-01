@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
 )
 
 type SettingsRepo struct {
@@ -39,4 +40,23 @@ func (r *SettingsRepo) ListPublicSettings(ctx context.Context) (map[string]strin
 		}
 	}
 	return out, rows.Err()
+}
+
+func (r *SettingsRepo) Upsert(ctx context.Context, key, value string) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO settings (setting_key, setting_value)
+		VALUES ($1, $2)
+		ON CONFLICT (setting_key) DO UPDATE
+		SET setting_value = EXCLUDED.setting_value
+	`, key, value)
+	return err
+}
+
+func (r *SettingsRepo) GetByKey(ctx context.Context, key string) (string, error) {
+	var val sql.NullString
+	err := r.db.QueryRowContext(ctx, `SELECT setting_value FROM settings WHERE setting_key = $1`, key).Scan(&val)
+	if err != nil {
+		return "", err
+	}
+	return val.String, nil
 }

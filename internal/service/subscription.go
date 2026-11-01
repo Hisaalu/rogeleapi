@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Hisaalu/rogele/internal/domain"
 	"github.com/Hisaalu/rogele/internal/repository"
+	"github.com/Hisaalu/rogele/internal/repository/postgres"
 )
 
 type SubscribeInput struct {
@@ -24,6 +26,7 @@ type SubscriptionService struct {
 	trials   repository.FreeTrialRepository
 	users    repository.UserRepository
 	payments repository.PaymentRepository
+	settings *postgres.SettingsRepo
 }
 
 type planLookup interface {
@@ -37,6 +40,7 @@ func NewSubscriptionService(
 	trials repository.FreeTrialRepository,
 	users repository.UserRepository,
 	payments repository.PaymentRepository,
+	settings *postgres.SettingsRepo,
 ) *SubscriptionService {
 	return &SubscriptionService{
 		subs:     subs,
@@ -44,6 +48,7 @@ func NewSubscriptionService(
 		trials:   trials,
 		users:    users,
 		payments: payments,
+		settings: settings,
 	}
 }
 
@@ -115,9 +120,13 @@ func (s *SubscriptionService) GetMyTrial(ctx context.Context, actor ActorContext
 	}
 
 	durationDays := 14
-	freePlan, err := s.plans.GetFreePlan(ctx)
-	if err == nil && freePlan != nil && freePlan.DurationDays > 0 {
-		durationDays = freePlan.DurationDays
+	if s.settings != nil {
+		val, err := s.settings.GetByKey(ctx, "trial.duration_days")
+		if err == nil && val != "" {
+			if parsed, err := strconv.Atoi(val); err == nil && parsed > 0 {
+				durationDays = parsed
+			}
+		}
 	}
 
 	now := time.Now().UTC()

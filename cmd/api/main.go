@@ -124,7 +124,14 @@ func run() error {
 	)
 	go expiryScheduler.Run(ctx)
 
-	subSvc := service.NewSubscriptionService(repos.Subscription, planRepo, repos.FreeTrial, repos.User, repos.Payment)
+	subSvc := service.NewSubscriptionService(
+		repos.Subscription,
+		planRepo,
+		repos.FreeTrial,
+		repos.User,
+		repos.Payment,
+		settingsRepo,
+	)
 
 	authSvc := service.NewAuthService(
 		repos.User,
@@ -180,6 +187,7 @@ func run() error {
 	)
 	notificationHandler := handler.NewNotificationHandler(notificationSvc, log)
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsSvc, log)
+	settingsHandler := handler.NewSettingsHandler(settingsRepo, log)
 
 	router := server.NewRouter(server.RouterDeps{
 		Log:                 log,
@@ -202,6 +210,7 @@ func run() error {
 		AdminUserHandler:    adminUserHandler,
 		NotificationHandler: notificationHandler,
 		AnalyticsHandler:    analyticsHandler,
+		SettingsHandler:     settingsHandler,
 		CRUDConfig:          crudConfig,
 		CRUDRepo:            crudRepo,
 		UploadHandler:       uploadHandler,

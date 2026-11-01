@@ -37,6 +37,7 @@ type RouterDeps struct {
 	AdminHandler        *handler.AdminHandler
 	AdminUserHandler    *handler.AdminUserHandler
 	NotificationHandler *handler.NotificationHandler
+	SettingsHandler     *handler.SettingsHandler
 	CRUDConfig          *crud.Config
 	CRUDRepo            *crud.Repository
 	UploadHandler       *handler.UploadHandler
@@ -60,6 +61,11 @@ func NewRouter(deps RouterDeps) http.Handler {
 		if deps.ConfigHandler != nil {
 			r.Get("/config/public", deps.ConfigHandler.PublicConfig)
 			r.Get("/config/classes", deps.ConfigHandler.PublicClasses)
+		}
+
+		if deps.SettingsHandler != nil {
+			r.With(middleware.Authenticate(deps.Tokens)).
+				Post("/settings/update-trial", deps.SettingsHandler.UpdateTrial)
 		}
 
 		authHandler := handler.NewAuthHandler(deps.AuthSvc, deps.Repos.User, deps.Tokens, deps.R2, deps.Log)
