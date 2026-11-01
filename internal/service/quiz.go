@@ -85,7 +85,7 @@ func (s *QuizService) Create(ctx context.Context, teacherID int64, in CreateQuiz
 		in.MaxAttempts = 3
 	}
 
-	showResults := true
+	showResults := false
 	if in.ShowResultsToStudents != nil {
 		showResults = *in.ShowResultsToStudents
 	}
