@@ -95,7 +95,15 @@ func scanFreeTrial(row *sql.Row) (*domain.FreeTrial, error) {
 }
 
 func (r *FreeTrialRepo) GetDynamicTrial(ctx context.Context, userID int64, durationDays int) (*domain.FreeTrial, error) {
-	query := `
+	upsertQuery := `
+		INSERT INTO free_trials (user_id, start_date, end_date, converted_to_subscriber)
+		VALUES ($1, CURRENT_DATE, (CURRENT_DATE + ($2 || ' days')::interval)::timestamptz, false)
+		ON CONFLICT (user_id) DO NOTHING
+	`
+	
+	_, _ = r.db.ExecContext(ctx, upsertQuery, userID, durationDays)
+
+	selectQuery := `
 		SELECT 
 			id, 
 			user_id, 
@@ -118,7 +126,7 @@ func (r *FreeTrialRepo) GetDynamicTrial(ctx context.Context, userID int64, durat
 		daysRemain  int
 	)
 
-	err := r.db.QueryRowContext(ctx, query, userID, durationDays).Scan(
+	err := r.db.QueryRowContext(ctx, selectQuery, userID, durationDays).Scan(
 		&trial.ID, &userIDVal, &trial.StartDate, &endDate,
 		&trial.ConvertedToSubscriber, &createdAt, &isInTrial, &daysRemain,
 	)
