@@ -94,4 +94,54 @@ func scanFreeTrial(row *sql.Row) (*domain.FreeTrial, error) {
 	return &t, nil
 }
 
+func (r *FreeTrialRepo) GetDynamicTrial(ctx context.Context, userID int64, durationDays int) (*domain.FreeTrial, error) {
+	query := `
+		SELECT 
+			id, user_id, start_date, 
+			(start_date::date + ($2 || ' days')::interval)::timestamptz as dynamic_end_date,
+			converted_to_subscriber, created_at,
+			(start_date::date + ($2 || ' days')::interval)::date >= CURRENT_DATE as is_in_trial,
+			GREATEST(0, (start_date::date + ($2 || ' days')::interval)::date - CURRENT_DATE) as days_remaining
+		FROM free_trials 
+		WHERE user_id = $1
+	`
+	
+	var (
+		trial       domain.FreeTrial
+		userIDVal   sql.NullInt64
+		endDate     sql.NullTime
+		createdAt   sql.NullTime
+		isInTrial   bool
+		daysRemain  int
+	)
+
+	err := r.db.QueryRowContext(ctx, query, userID, durationDays).Scan(
+		&trial.ID, &userIDVal, &trial.StartDate, &endDate,
+		&trial.ConvertedToSubscriber, &createdAt, &isInTrial, &daysRemain,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if userIDVal.Valid {
+		trial.UserID = &userIDVal.Int64
+	}
+	if endDate.Valid {
+		trial.EndDate = endDate.Time
+	}
+	if createdAt.Valid {
+		trial.CreatedAt = createdAt.Time
+	}
+
+	trial.IsInTrial = isInTrial
+	trial.DaysRemaining = daysRemain
+	trial.TotalDays = durationDays
+
+	return &trial, nil
+}
+
 var _ repository.FreeTrialRepository = (*FreeTrialRepo)(nil)

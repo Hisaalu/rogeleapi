@@ -113,11 +113,6 @@ func (s *SubscriptionService) StartTrial(ctx context.Context, actor ActorContext
 }
 
 func (s *SubscriptionService) GetMyTrial(ctx context.Context, actor ActorContext) (*domain.FreeTrial, error) {
-	trial, err := s.trials.GetByUser(ctx, actor.UserID)
-	if err != nil {
-		return nil, err
-	}
-
 	durationDays := 14
 	if s.settings != nil {
 		val, err := s.settings.GetByKey(ctx, "trial.duration_days")
@@ -128,33 +123,7 @@ func (s *SubscriptionService) GetMyTrial(ctx context.Context, actor ActorContext
 		}
 	}
 
-	start := trial.StartDate.UTC()
-	truncatedStart := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
-
-	dynamicEndDate := truncatedStart.AddDate(0, 0, durationDays)
-
-	now := time.Now().UTC()
-	truncatedNow := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-
-	trial.EndDate = dynamicEndDate
-	trial.TotalDays = durationDays
-
-	if truncatedNow.Before(dynamicEndDate) {
-		trial.IsInTrial = true
-		
-		diff := dynamicEndDate.Sub(truncatedNow)
-		daysLeft := int(diff.Hours() / 24.0)
-		
-		if daysLeft < 0 {
-			daysLeft = 0
-		}
-		trial.DaysRemaining = daysLeft
-	} else {
-		trial.IsInTrial = false
-		trial.DaysRemaining = 0
-	}
-
-	return trial, nil
+	return s.trials.GetDynamicTrial(ctx, actor.UserID, durationDays)
 }
 
 func (s *SubscriptionService) Cancel(ctx context.Context, id int64, actor ActorContext) (*domain.Subscription, error) {

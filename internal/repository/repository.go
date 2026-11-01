@@ -172,6 +172,7 @@ type SubscriptionRepository interface {
 
 type FreeTrialRepository interface {
 	Create(ctx context.Context, t *domain.FreeTrial) (*domain.FreeTrial, error)
+	GetDynamicTrial(ctx context.Context, userID int64, durationDays int) (*domain.FreeTrial, error)
 	GetByUser(ctx context.Context, userID int64) (*domain.FreeTrial, error)
 	ExistsForEmail(ctx context.Context, email string) (bool, error)
 	Update(ctx context.Context, t *domain.FreeTrial) error
