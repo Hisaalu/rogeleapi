@@ -58,4 +58,7 @@ type FreeTrial struct {
 	NotificationSent      bool      `json:"notification_sent"`
 	ConvertedToSubscriber bool      `json:"converted_to_subscriber"`
 	CreatedAt             time.Time `json:"created_at"`
+	IsInTrial              bool      `json:"is_in_trial"`
+	DaysRemaining          int       `json:"days_remaining"`
+	TotalDays              int       `json:"total_days"`
 }

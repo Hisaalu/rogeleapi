@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -119,7 +120,21 @@ func (s *SubscriptionService) GetMyTrial(ctx context.Context, actor ActorContext
 		durationDays = freePlan.DurationDays
 	}
 
-	trial.EndDate = trial.StartDate.AddDate(0, 0, durationDays)
+	now := time.Now().UTC()
+	dynamicEndDate := trial.StartDate.AddDate(0, 0, durationDays)
+	
+	trial.EndDate = dynamicEndDate
+	trial.TotalDays = durationDays
+
+	if now.Before(dynamicEndDate) {
+		trial.IsInTrial = true
+		
+		diff := dynamicEndDate.Sub(now)
+		trial.DaysRemaining = int(math.Ceil(diff.Hours() / 24.0))
+	} else {
+		trial.IsInTrial = false
+		trial.DaysRemaining = 0
+	}
 
 	return trial, nil
 }
