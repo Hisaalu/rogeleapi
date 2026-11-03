@@ -62,6 +62,9 @@ func PaymentFromDomain(p *domain.Payment) PaymentResponse {
 		PaymentDate:     p.PaymentDate,
 		CreatedAt:       p.CreatedAt,
 		GatewayResponse: p.PaymentGatewayResponse,
+		UserEmail:     p.UserEmail,
+		UserFirstName: p.UserFirstName,
+		UserLastName:  p.UserLastName,
 	}
 }
 
