@@ -36,6 +36,9 @@ type SubscriptionResponse struct {
 	AutoRenew     bool      `json:"auto_renew"`
 	IsUpgrade     bool      `json:"is_upgrade"`
 	CreatedAt     time.Time `json:"created_at"`
+	UserEmail     *string `json:"user_email,omitempty"`
+	UserFirstName *string `json:"user_first_name,omitempty"`
+	UserLastName  *string `json:"user_last_name,omitempty"`
 }
 
 func SubscriptionFromDomain(s *domain.Subscription) SubscriptionResponse {
@@ -52,6 +55,9 @@ func SubscriptionFromDomain(s *domain.Subscription) SubscriptionResponse {
 		AutoRenew:     s.AutoRenew,
 		IsUpgrade:     s.IsUpgrade,
 		CreatedAt:     s.CreatedAt.UTC(),
+		UserEmail:     s.UserEmail,
+		UserFirstName: s.UserFirstName,
+		UserLastName:  s.UserLastName,
 	}
 }
 
