@@ -65,3 +65,8 @@ type ClassLearnerCount struct {
 	LearnerCount int    `json:"learner_count"`
 	Capacity     *int   `json:"capacity,omitempty"`
 }
+
+type ActivityCursor struct {
+	CreatedAt time.Time
+	ID        int64
+}

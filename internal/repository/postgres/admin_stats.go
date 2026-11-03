@@ -140,22 +140,44 @@ func (r *AdminStatsRepo) GetOverview(ctx context.Context) (*domain.AdminOverview
 	return out, nil
 }
 
-func (r *AdminStatsRepo) ListRecentActivity(ctx context.Context, limit int) ([]*domain.AdminActivityItem, error) {
-	if limit <= 0 || limit > 500 {
-		limit = 20
+func (r *AdminStatsRepo) ListRecentActivity(
+	ctx context.Context,
+	limit int,
+	cursor *domain.ActivityCursor,
+) ([]*domain.AdminActivityItem, bool, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 25
 	}
 
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT
-			l.id, l.action, l.description, l.created_at,
-			u.id, u.email, u.first_name, u.last_name, u.role
-		FROM activity_logs l
-		LEFT JOIN users u ON u.id = l.user_id
-		ORDER BY l.created_at DESC
-		LIMIT $1
-	`, limit)
+	var (
+		rows *sql.Rows
+		err  error
+	)
+
+	if cursor == nil {
+		rows, err = r.db.QueryContext(ctx, `
+			SELECT
+				l.id, l.action, l.description, l.created_at,
+				u.id, u.email, u.first_name, u.last_name, u.role
+			FROM activity_logs l
+			LEFT JOIN users u ON u.id = l.user_id
+			ORDER BY l.created_at DESC, l.id DESC
+			LIMIT $1
+		`, limit+1)
+	} else {
+		rows, err = r.db.QueryContext(ctx, `
+			SELECT
+				l.id, l.action, l.description, l.created_at,
+				u.id, u.email, u.first_name, u.last_name, u.role
+			FROM activity_logs l
+			LEFT JOIN users u ON u.id = l.user_id
+			WHERE (l.created_at, l.id) < ($1, $2)
+			ORDER BY l.created_at DESC, l.id DESC
+			LIMIT $3
+		`, cursor.CreatedAt, cursor.ID, limit+1)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("list recent activity: %w", err)
+		return nil, false, fmt.Errorf("list recent activity: %w", err)
 	}
 	defer rows.Close()
 
@@ -174,7 +196,7 @@ func (r *AdminStatsRepo) ListRecentActivity(ctx context.Context, limit int) ([]*
 			&item.ID, &item.Action, &desc, &item.CreatedAt,
 			&userID, &email, &firstName, &lastName, &role,
 		); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if desc.Valid {
 			item.Description = &desc.String
@@ -196,7 +218,15 @@ func (r *AdminStatsRepo) ListRecentActivity(ctx context.Context, limit int) ([]*
 		}
 		out = append(out, &item)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+
+	hasMore := len(out) > limit
+	if hasMore {
+		out = out[:limit]
+	}
+	return out, hasMore, nil
 }
 
 func (r *AdminStatsRepo) ListRecentSignups(ctx context.Context, limit int) ([]*domain.AdminUserSummary, error) {
