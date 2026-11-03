@@ -26,10 +26,17 @@ type BroadcastRequest struct {
 	Message string  `json:"message"`
 	Link    *string `json:"link,omitempty"`
 	Type    string  `json:"type,omitempty"`
+
+	AudienceKind    string  `json:"audience_kind,omitempty"`
+	AudienceValue   string  `json:"audience_value,omitempty"`
+	AudienceClassID *int64  `json:"audience_class_id,omitempty"`
+	AudienceUserIDs []int64 `json:"audience_user_ids,omitempty"`
 }
 
 type BroadcastResponse struct {
-	Sent int `json:"sent"`
+	Sent        int    `json:"sent"`
+	Audience    string `json:"audience"`
+	Recipients  int    `json:"recipients"`
 }
 
 func NotificationFromDomain(n *domain.Notification) NotificationResponse {

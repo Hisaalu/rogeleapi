@@ -110,12 +110,29 @@ func (h *NotificationHandler) Broadcast(w http.ResponseWriter, r *http.Request) 
 		httputil.Error(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
 		return
 	}
-	count, err := h.svc.Broadcast(r.Context(), actor, req.Title, req.Message, req.Link, req.Type)
+
+	aud := service.BroadcastAudience{
+		Kind:    req.AudienceKind,
+		Value:   req.AudienceValue,
+		ClassID: req.AudienceClassID,
+		UserIDs: req.AudienceUserIDs,
+	}
+
+	sent, label, err := h.svc.Broadcast(
+		r.Context(), actor,
+		req.Title, req.Message, req.Link, req.Type,
+		aud,
+	)
 	if err != nil {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
-	httputil.JSON(w, http.StatusCreated, dto.BroadcastResponse{Sent: count})
+
+	httputil.JSON(w, http.StatusCreated, dto.BroadcastResponse{
+		Sent:       sent,
+		Audience:   label,
+		Recipients: sent,
+	})
 }
 
 func (h *NotificationHandler) ListBroadcasts(w http.ResponseWriter, r *http.Request) {
