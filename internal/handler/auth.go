@@ -21,6 +21,7 @@ type AuthHandler struct {
 	users   repository.UserRepository
 	tokens  *auth.TokenManager
 	r2      *storage.R2Client
+	activity *service.ActivityService
 	log     *slog.Logger
 }
 
@@ -29,6 +30,7 @@ func NewAuthHandler(
 	users repository.UserRepository,
 	tokens *auth.TokenManager,
 	r2 *storage.R2Client,
+	activity *service.ActivityService,
 	log *slog.Logger,
 ) *AuthHandler {
 	return &AuthHandler{
@@ -36,6 +38,7 @@ func NewAuthHandler(
 		users:   users,
 		tokens:  tokens,
 		r2:      r2,
+		activity: activity, 
 		log:     log,
 	}
 }
@@ -292,6 +295,8 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
+
+	h.activity.Log(r.Context(), u.ID, "password_change", "changed password from settings")
 
 	httputil.JSON(w, http.StatusOK, map[string]string{"message": "password updated successfully"})
 }

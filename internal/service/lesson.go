@@ -78,6 +78,7 @@ func (s *LessonService) Create(ctx context.Context, teacherID int64, in CreateLe
 	if err != nil {
 		return nil, err
 	}
+	s.activity.Log(ctx, teacherID, "lesson_create", created.Title)
 	if created.IsPublished {
 		s.notifyNewLesson(ctx, created)
 	}

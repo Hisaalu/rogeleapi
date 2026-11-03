@@ -215,6 +215,7 @@ func run() error {
 		CRUDRepo:            crudRepo,
 		UploadHandler:       uploadHandler,
 		ServiceTokenHandler: serviceTokenHandler,
+		ActivitySvc: activitySvc,
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.App.Port)

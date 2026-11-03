@@ -43,6 +43,7 @@ type RouterDeps struct {
 	UploadHandler       *handler.UploadHandler
 	AnalyticsHandler    *handler.AnalyticsHandler
 	ServiceTokenHandler *handler.ServiceTokenHandler
+	ActivitySvc *service.ActivityService
 }
 
 func NewRouter(deps RouterDeps) http.Handler {
@@ -68,8 +69,8 @@ func NewRouter(deps RouterDeps) http.Handler {
 				Post("/settings/update-trial", deps.SettingsHandler.UpdateTrial)
 		}
 
-		authHandler := handler.NewAuthHandler(deps.AuthSvc, deps.Repos.User, deps.Tokens, deps.R2, deps.Log)
-		r.Route("/auth", func(r chi.Router) {
+			authHandler := handler.NewAuthHandler(deps.AuthSvc, deps.Repos.User, deps.Tokens, deps.R2, deps.ActivitySvc, deps.Log)		
+			r.Route("/auth", func(r chi.Router) {
 			r.Post("/register", authHandler.Register)
 			r.Post("/login", authHandler.Login)
 			r.Post("/refresh", authHandler.Refresh)

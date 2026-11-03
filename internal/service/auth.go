@@ -136,6 +136,8 @@ func (s *AuthService) Register(ctx context.Context, in RegisterInput) (*AuthResu
 		_, _ = s.subs.StartTrial(ctx, actor)
 	}
 
+	s.activity.Log(ctx, created.ID, "signup", "created account")
+
 	return s.issueTokens(created)
 }
 
@@ -268,6 +270,8 @@ func (s *AuthService) ResetPassword(ctx context.Context, in ResetPasswordInput) 
 	if err := s.users.UpdatePassword(ctx, pr.UserID, hash); err != nil {
 		return err
 	}
+
+	s.activity.Log(ctx, pr.UserID, "password_reset", "reset password via email link")
 
 	return s.resetRepo.MarkUsed(ctx, pr.ID)
 }

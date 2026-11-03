@@ -77,6 +77,7 @@ func (s *HomeworkService) Create(ctx context.Context, teacherID int64, in Create
 		return nil, err
 	}
 
+	s.activity.Log(ctx, teacherID, "homework_create", created.Title)
 	s.notifyNewHomework(ctx, created)
 	return created, nil
 }

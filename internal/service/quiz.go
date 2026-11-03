@@ -114,6 +114,7 @@ func (s *QuizService) Create(ctx context.Context, teacherID int64, in CreateQuiz
 	if err != nil {
 		return nil, err
 	}
+	s.activity.Log(ctx, teacherID, "quiz_create", created.Title)
 	if created.IsPublished {
 		s.notifyNewQuiz(ctx, created)
 	}
