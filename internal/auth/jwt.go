@@ -19,6 +19,8 @@ const (
 	TokenRefresh TokenType = "refresh"
 )
 
+const ServiceTokenTTL = 10 * 365 * 24 * time.Hour
+
 type Claims struct {
 	UserID int64           `json:"uid"`
 	Email  string          `json:"email"`
@@ -110,4 +112,8 @@ func (m *TokenManager) GenerateService(name string, ttl time.Duration) (string, 
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(m.secret)
+}
+
+func (m *TokenManager) GenerateLongLivedService(name string) (string, error) {
+	return m.GenerateService(name, ServiceTokenTTL)
 }

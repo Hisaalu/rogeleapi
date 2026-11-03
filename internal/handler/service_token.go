@@ -37,26 +37,28 @@ func (h *ServiceTokenHandler) Issue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req issueServiceTokenRequest
-	if err := httputil.DecodeJSON(r, &req); err != nil {
-		httputil.Error(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
-		return
-	}
-	name := strings.TrimSpace(req.Name)
-	if name == "" {
-		httputil.Error(w, http.StatusBadRequest, "INVALID_INPUT", "name is required")
-		return
+	if r.ContentLength > 0 {
+		_ = httputil.DecodeJSON(r, &req)
 	}
 
-	token, err := h.tokens.GenerateService(name, 365*24*time.Hour)
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		name = "analytics"
+	}
+
+	token, err := h.tokens.GenerateLongLivedService(name)
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "TOKEN_FAILED", "could not generate token")
 		return
 	}
 
-	h.log.Info("service token issued", "name", name)
+	expiresAt := time.Now().UTC().Add(auth.ServiceTokenTTL)
+
+	h.log.Info("service token issued", "name", name, "expires_at", expiresAt)
 	httputil.JSON(w, http.StatusCreated, map[string]any{
 		"name":       name,
 		"token":      token,
-		"expires_in": 365 * 24 * 60 * 60,
+		"expires_at": expiresAt,
+		"type":       "access",
 	})
 }
