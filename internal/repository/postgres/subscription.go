@@ -320,4 +320,32 @@ func (r *SubscriptionRepo) ListWithUsers(ctx context.Context, f repository.Subsc
 	return results, rows.Err()
 }
 
+func (r *SubscriptionRepo) CountWithUsers(ctx context.Context, f repository.SubscriptionFilter) (int, error) {
+    var where []string
+    var args []any
+    i := 1
+
+    if f.UserID != nil {
+        where = append(where, fmt.Sprintf("s.user_id = $%d", i))
+        args = append(args, *f.UserID)
+        i++
+    }
+    if f.Status != nil {
+        where = append(where, fmt.Sprintf("s.status = $%d", i))
+        args = append(args, *f.Status)
+        i++
+    }
+
+    query := `SELECT COUNT(*) FROM subscriptions s`
+    if len(where) > 0 {
+        query += " WHERE " + strings.Join(where, " AND ")
+    }
+
+    var count int
+    if err := r.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+        return 0, fmt.Errorf("count subscriptions with users: %w", err)
+    }
+    return count, nil
+}
+
 var _ repository.SubscriptionRepository = (*SubscriptionRepo)(nil)

@@ -51,43 +51,59 @@ func (h *SubscriptionHandler) MyList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SubscriptionHandler) ListAll(w http.ResponseWriter, r *http.Request) {
-	actor, ok := h.actor(w, r)
-	if !ok {
-		return
-	}
+    actor, ok := h.actor(w, r)
+    if !ok {
+        return
+    }
 
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
-	if perPage < 1 {
-		perPage = 20
-	}
-	if perPage > 100 {
-		perPage = 100
-	}
-	if page < 1 {
-		page = 1
-	}
+    page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+    perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
+    if perPage < 1 {
+        perPage = 20
+    }
+    if perPage > 100 {
+        perPage = 100
+    }
+    if page < 1 {
+        page = 1
+    }
 
-	f := repository.SubscriptionFilter{
-		Limit:  perPage,
-		Offset: (page - 1) * perPage,
-	}
-	if v := r.URL.Query().Get("user_id"); v != "" {
-		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
-			f.UserID = &id
-		}
-	}
-	if v := r.URL.Query().Get("status"); v != "" {
-		s := domain.SubscriptionStatus(v)
-		f.Status = &s
-	}
+    f := repository.SubscriptionFilter{
+        Limit:  perPage,
+        Offset: (page - 1) * perPage,
+    }
+    if v := r.URL.Query().Get("user_id"); v != "" {
+        if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+            f.UserID = &id
+        }
+    }
+    if v := r.URL.Query().Get("status"); v != "" {
+        s := domain.SubscriptionStatus(v)
+        f.Status = &s
+    }
 
-	subs, err := h.svc.ListAll(r.Context(), actor, f)
-	if err != nil {
-		httputil.DomainError(w, err, h.log)
-		return
-	}
-	httputil.JSON(w, http.StatusOK, dto.SubscriptionsFromDomain(subs))
+    subs, err := h.svc.ListAll(r.Context(), actor, f)
+    if err != nil {
+        httputil.DomainError(w, err, h.log)
+        return
+    }
+
+    total, _ := h.svc.CountAll(r.Context(), actor, f)
+
+    lastPage := 1
+    if perPage > 0 && total > 0 {
+        lastPage = (total + perPage - 1) / perPage
+    }
+
+    httputil.JSON(w, http.StatusOK, map[string]any{
+        "data": dto.SubscriptionsFromDomain(subs),
+        "meta": map[string]int{
+            "page":      page,
+            "per_page":  perPage,
+            "total":     total,
+            "last_page": lastPage,
+        },
+    })
 }
 
 func (h *SubscriptionHandler) Cancel(w http.ResponseWriter, r *http.Request) {

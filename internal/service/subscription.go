@@ -222,3 +222,10 @@ func (s *SubscriptionService) MarkConverted(ctx context.Context, userID int64) e
 	t.ConvertedToSubscriber = true
 	return s.trials.Update(ctx, t)
 }
+
+func (s *SubscriptionService) CountAll(ctx context.Context, actor ActorContext, f repository.SubscriptionFilter) (int, error) {
+    if actor.Role != domain.RoleAdmin {
+        return 0, fmt.Errorf("%w: admin only", domain.ErrForbidden)
+    }
+    return s.subs.CountWithUsers(ctx, f)
+}

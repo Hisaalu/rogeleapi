@@ -166,6 +166,7 @@ type SubscriptionRepository interface {
 	GetActiveByUser(ctx context.Context, userID int64) (*domain.Subscription, error)
 	List(ctx context.Context, f SubscriptionFilter) ([]*domain.Subscription, error)
 	ListWithUsers(ctx context.Context, f SubscriptionFilter) ([]*domain.Subscription, error)
+	CountWithUsers(ctx context.Context, f SubscriptionFilter) (int, error)
 	Update(ctx context.Context, s *domain.Subscription) error
 	ExpireOverdue(ctx context.Context) (int, error)
 }
