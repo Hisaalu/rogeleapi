@@ -150,25 +150,31 @@ func (s *CampaignService) Preview(ctx context.Context, id int64, in PreviewInput
 		return "", "", 0, err
 	}
 
+	sampleEmail := strings.TrimSpace(in.SampleEmail)
+	if sampleEmail == "" {
+		sampleEmail = "sample@example.com"
+	}
+	sampleFirstName := strings.TrimSpace(in.SampleName)
+	if sampleFirstName == "" {
+		sampleFirstName = inferFirstName(&domain.EmailRecipient{Email: sampleEmail})
+	}
+
 	sample := map[string]any{
-		"FirstName": in.SampleName,
-		"Email":     in.SampleEmail,
-	}
-	if sample["FirstName"] == "" {
-		sample["FirstName"] = "Sample"
-	}
-	if sample["Email"] == "" {
-		sample["Email"] = "sample@example.com"
+		"FirstName": sampleFirstName,
+		"FullName":  sampleFirstName,
+		"Email":     sampleEmail,
 	}
 
 	subject, err := mailer.RenderText(c.Subject, sample)
 	if err != nil {
 		return "", "", 0, fmt.Errorf("render subject: %w", err)
 	}
+
 	body, err := mailer.RenderText(c.Body, sample)
 	if err != nil {
 		return "", "", 0, fmt.Errorf("render body: %w", err)
 	}
+	body = prepareEmailBody(body)
 
 	return subject, body, len(recipients), nil
 }
@@ -192,21 +198,25 @@ func (s *CampaignService) Send(ctx context.Context, id int64) (int, error) {
 
 	queued := 0
 	for _, r := range recipients {
+		firstName := inferFirstName(r)
 		vars := map[string]any{
-			"FirstName": derefOr(r.FirstName, "there"),
+			"FirstName": firstName,
 			"FullName":  r.DisplayName(),
 			"Email":     r.Email,
 		}
+
 		subject, err := mailer.RenderText(c.Subject, vars)
 		if err != nil {
 			s.log.Warn("campaign render subject failed", "email", r.Email, "error", err)
 			continue
 		}
+
 		body, err := mailer.RenderText(c.Body, vars)
 		if err != nil {
 			s.log.Warn("campaign render body failed", "email", r.Email, "error", err)
 			continue
 		}
+		body = prepareEmailBody(body)
 
 		if _, err := s.mailer.EnqueueRaw(ctx, r.Email, r.FirstName, subject, body, &c.ID); err != nil {
 			s.log.Warn("campaign enqueue failed", "email", r.Email, "error", err)
@@ -268,6 +278,97 @@ func (s *CampaignService) resolveRecipients(ctx context.Context, c *domain.Email
 		return out, nil
 	}
 	return nil, fmt.Errorf("%w: unknown recipient_type", domain.ErrInvalidInput)
+}
+
+func prepareEmailBody(raw string) string {
+	text := strings.ReplaceAll(raw, "\r\n", "\n")
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return ""
+	}
+
+	if strings.Contains(trimmed, "<") {
+		return strings.ReplaceAll(trimmed, "\n", "<br>\n")
+	}
+
+	paragraphs := strings.Split(trimmed, "\n\n")
+	var out strings.Builder
+
+	for i, p := range paragraphs {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+
+		line := strings.ReplaceAll(p, "\n", "<br>\n")
+
+		style := "margin:0 0 16px;"
+		if i == 0 && isGreeting(p) {
+			style = "font-size:18px;font-weight:600;margin:0 0 16px;"
+		}
+
+		out.WriteString(`<p style="`)
+		out.WriteString(style)
+		out.WriteString(`">`)
+		out.WriteString(line)
+		out.WriteString("</p>\n")
+	}
+
+	return strings.TrimRight(out.String(), "\n")
+}
+
+func isGreeting(p string) bool {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return false
+	}
+	if strings.ContainsAny(p, "\n") {
+		return false
+	}
+	if len(p) > 60 {
+		return false
+	}
+	lower := strings.ToLower(p)
+	for _, prefix := range []string{"hi ", "hello ", "hey ", "dear "} {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func inferFirstName(r *domain.EmailRecipient) string {
+	if r.FirstName != nil && strings.TrimSpace(*r.FirstName) != "" {
+		return strings.TrimSpace(*r.FirstName)
+	}
+
+	local := strings.SplitN(r.Email, "@", 2)[0]
+	local = strings.ToLower(strings.TrimSpace(local))
+
+	local = strings.TrimRight(local, "0123456789")
+	for _, sep := range []string{".", "_", "+", "-"} {
+		if idx := strings.Index(local, sep); idx > 0 {
+			local = local[:idx]
+			break
+		}
+	}
+
+	local = strings.TrimSpace(local)
+	if local == "" || isSystemAddress(local) {
+		return "Friend"
+	}
+
+	runes := []rune(local)
+	runes[0] = []rune(strings.ToUpper(string(runes[0])))[0]
+	return string(runes)
+}
+
+func isSystemAddress(local string) bool {
+	switch local {
+	case "info", "support", "admin", "noreply", "no-reply", "contact", "hello", "team":
+		return true
+	}
+	return false
 }
 
 func isValidRecipientType(t string) bool {
