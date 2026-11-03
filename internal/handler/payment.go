@@ -118,7 +118,23 @@ func (h *PaymentHandler) ListAll(w http.ResponseWriter, r *http.Request) {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
-	httputil.JSON(w, http.StatusOK, dto.PaymentsFromDomain(items))
+
+	total, _ := h.svc.CountAll(r.Context(), actor, f)
+
+	lastPage := 1
+	if perPage > 0 && total > 0 {
+		lastPage = (total + perPage - 1) / perPage
+	}
+
+	httputil.JSON(w, http.StatusOK, map[string]any{
+		"data": dto.PaymentsFromDomain(items),
+		"meta": map[string]int{
+			"page":      page,
+			"per_page":  perPage,
+			"total":     total,
+			"last_page": lastPage,
+		},
+	})
 }
 
 func (h *PaymentHandler) MyHistory(w http.ResponseWriter, r *http.Request) {

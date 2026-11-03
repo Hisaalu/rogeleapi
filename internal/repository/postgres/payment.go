@@ -434,4 +434,32 @@ func (r *PaymentRepo) ListWithUsers(ctx context.Context, f repository.PaymentFil
 	return results, rows.Err()
 }
 
+func (r *PaymentRepo) CountWithUsers(ctx context.Context, f repository.PaymentFilter) (int, error) {
+	var where []string
+	var args []any
+	i := 1
+
+	if f.UserID != nil {
+		where = append(where, fmt.Sprintf("p.user_id = $%d", i))
+		args = append(args, *f.UserID)
+		i++
+	}
+	if f.Status != nil {
+		where = append(where, fmt.Sprintf("p.status = $%d", i))
+		args = append(args, *f.Status)
+		i++
+	}
+
+	query := `SELECT COUNT(*) FROM payments p`
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
+
+	var count int
+	if err := r.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count payments with users: %w", err)
+	}
+	return count, nil
+}
+
 var _ repository.PaymentRepository = (*PaymentRepo)(nil)

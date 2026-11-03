@@ -472,3 +472,10 @@ func (s *PaymentService) PreviewPayment(ctx context.Context, actor ActorContext,
 	}
 	return s.calculateProratedAmount(ctx, actor, plan), nil
 }
+
+func (s *PaymentService) CountAll(ctx context.Context, actor ActorContext, f repository.PaymentFilter) (int, error) {
+	if actor.Role != domain.RoleAdmin {
+		return 0, fmt.Errorf("%w: admin only", domain.ErrForbidden)
+	}
+	return s.payments.CountWithUsers(ctx, f)
+}

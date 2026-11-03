@@ -191,6 +191,7 @@ type PaymentRepository interface {
 	GetByTransactionID(ctx context.Context, txnID string) (*domain.Payment, error)
 	List(ctx context.Context, f PaymentFilter) ([]*domain.Payment, error)
 	ListWithUsers(ctx context.Context, f PaymentFilter) ([]*domain.Payment, error)
+	CountWithUsers(ctx context.Context, f PaymentFilter) (int, error)
 	Update(ctx context.Context, p *domain.Payment) error
 
 	CreateHistory(ctx context.Context, h *domain.PaymentHistory) (*domain.PaymentHistory, error)
