@@ -115,3 +115,17 @@ func (s *AnalyticsService) SignupDates(ctx context.Context) ([]*domain.SignupDat
 func (s *AnalyticsService) LearnerSignals(ctx context.Context) ([]*domain.LearnerSignal, error) {
 	return s.repo.LearnerSignals(ctx)
 }
+
+func (s *AnalyticsService) LearnerRawData(
+	ctx context.Context,
+	learnerID int64,
+	r DateRange,
+) (*domain.LearnerRawData, error) {
+	if learnerID <= 0 {
+		return nil, fmt.Errorf("%w: invalid learner_id", domain.ErrInvalidInput)
+	}
+	if r.To.Sub(r.From) > 366*24*time.Hour {
+		return nil, fmt.Errorf("%w: date range exceeds 1 year", domain.ErrInvalidInput)
+	}
+	return s.repo.LearnerRawData(ctx, learnerID, r.From, r.To)
+}

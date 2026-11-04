@@ -264,6 +264,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 				r.Get("/user-events", deps.AnalyticsHandler.UserEvents)
 				r.Get("/signup-dates", deps.AnalyticsHandler.SignupDates)
 				r.Get("/learner-signals", deps.AnalyticsHandler.LearnerSignals)
+				r.Get("/learner/raw/{learner_id}", deps.AnalyticsHandler.LearnerRaw)
 			})
 		}
 

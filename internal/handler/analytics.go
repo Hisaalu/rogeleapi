@@ -10,6 +10,7 @@ import (
 	"github.com/Hisaalu/rogele/internal/httputil"
 	"github.com/Hisaalu/rogele/internal/server/middleware"
 	"github.com/Hisaalu/rogele/internal/service"
+	"github.com/go-chi/chi/v5"
 )
 
 type AnalyticsHandler struct {
@@ -170,6 +171,37 @@ func (h *AnalyticsHandler) LearnerSignals(w http.ResponseWriter, r *http.Request
 		return
 	}
 	out, err := h.svc.LearnerSignals(r.Context())
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+	httputil.JSON(w, http.StatusOK, out)
+}
+
+func (h *AnalyticsHandler) LearnerRaw(w http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		httputil.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")
+		return
+	}
+
+	learnerID, err := strconv.ParseInt(chi.URLParam(r, "learner_id"), 10, 64)
+	if err != nil || learnerID <= 0 {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "learner_id must be a positive integer")
+		return
+	}
+
+	if claims.Role != domain.RoleAdmin && claims.UserID != learnerID {
+		httputil.Error(w, http.StatusForbidden, "FORBIDDEN", "you can only view your own analytics")
+		return
+	}
+
+	dr, ok := h.parseRange(w, r)
+	if !ok {
+		return
+	}
+
+	out, err := h.svc.LearnerRawData(r.Context(), learnerID, dr)
 	if err != nil {
 		httputil.DomainError(w, err, h.log)
 		return

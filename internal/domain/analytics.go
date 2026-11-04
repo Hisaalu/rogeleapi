@@ -80,3 +80,38 @@ type LearnerSignal struct {
 	ActiveAssignmentsForUser int        `json:"active_assignments"`
 	MissingAssignments       int        `json:"missing_assignments"`
 }
+
+type LearnerRawData struct {
+	LearnerID     int64                         `json:"learner_id"`
+	From          time.Time                     `json:"from"`
+	To            time.Time                     `json:"to"`
+	Homeworks     []*LearnerHomeworkSubmission  `json:"homeworks"`
+	QuizAttempts  []*LearnerQuizAttempt         `json:"quiz_attempts"`
+}
+
+type LearnerHomeworkSubmission struct {
+	SubmissionID int64      `json:"submission_id"`
+	HomeworkID   int64      `json:"homework_id"`
+	SubjectID    *int64     `json:"subject_id,omitempty"`
+	SubjectName  *string    `json:"subject_name,omitempty"`
+	HomeworkTitle string    `json:"homework_title"`
+	Grade        *float64   `json:"grade,omitempty"`
+	Status       string     `json:"status"`
+	SubmittedAt  *time.Time `json:"submitted_at,omitempty"`
+	GradedAt     *time.Time `json:"graded_at,omitempty"`
+}
+
+type LearnerQuizAttempt struct {
+	AttemptID     int64      `json:"attempt_id"`
+	QuizID        int64      `json:"quiz_id"`
+	SubjectID     *int64     `json:"subject_id,omitempty"`
+	SubjectName   *string    `json:"subject_name,omitempty"`
+	QuizTitle     string     `json:"quiz_title"`
+	Score         *int       `json:"score,omitempty"`
+	TotalQuestions *int      `json:"total_questions,omitempty"`
+	CorrectAnswers *int      `json:"correct_answers,omitempty"`
+	TimeTaken     *int       `json:"time_taken,omitempty"`
+	Status        string     `json:"status"`
+	StartedAt     time.Time  `json:"started_at"`
+	CompletedAt   *time.Time `json:"completed_at,omitempty"`
+}

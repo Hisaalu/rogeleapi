@@ -401,3 +401,156 @@ func (r *AnalyticsRepo) LearnerSignals(ctx context.Context) ([]*domain.LearnerSi
 
 	return out, rows.Err()
 }
+
+func (r *AnalyticsRepo) LearnerRawData(
+	ctx context.Context,
+	learnerID int64,
+	from, to time.Time,
+) (*domain.LearnerRawData, error) {
+	out := &domain.LearnerRawData{
+		LearnerID:    learnerID,
+		From:         from,
+		To:           to,
+		Homeworks:    []*domain.LearnerHomeworkSubmission{},
+		QuizAttempts: []*domain.LearnerQuizAttempt{},
+	}
+
+	hwRows, err := r.db.QueryContext(ctx, `
+		SELECT
+			s.id,
+			s.homework_id,
+			h.title,
+			h.subject_id,
+			sub.name,
+			s.grade,
+			s.status,
+			s.submitted_at,
+			s.graded_at
+		FROM homework_submissions s
+		JOIN homework h ON h.id = s.homework_id
+		LEFT JOIN subjects sub ON sub.id = h.subject_id
+		WHERE s.student_id = $1
+		  AND COALESCE(s.submitted_at, s.created_at) >= $2
+		  AND COALESCE(s.submitted_at, s.created_at) <= $3
+		ORDER BY COALESCE(s.submitted_at, s.created_at) ASC
+	`, learnerID, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("learner raw homework: %w", err)
+	}
+	for hwRows.Next() {
+		var (
+			item      domain.LearnerHomeworkSubmission
+			subjectID sql.NullInt64
+			subject   sql.NullString
+			grade     sql.NullFloat64
+			submitted sql.NullTime
+			graded    sql.NullTime
+		)
+		if err := hwRows.Scan(
+			&item.SubmissionID, &item.HomeworkID, &item.HomeworkTitle,
+			&subjectID, &subject, &grade, &item.Status, &submitted, &graded,
+		); err != nil {
+			hwRows.Close()
+			return nil, err
+		}
+		if subjectID.Valid {
+			item.SubjectID = &subjectID.Int64
+		}
+		if subject.Valid {
+			item.SubjectName = &subject.String
+		}
+		if grade.Valid {
+			item.Grade = &grade.Float64
+		}
+		if submitted.Valid {
+			item.SubmittedAt = &submitted.Time
+		}
+		if graded.Valid {
+			item.GradedAt = &graded.Time
+		}
+		out.Homeworks = append(out.Homeworks, &item)
+	}
+	hwRows.Close()
+	if err := hwRows.Err(); err != nil {
+		return nil, err
+	}
+
+	qRows, err := r.db.QueryContext(ctx, `
+		SELECT
+			a.id,
+			a.quiz_id,
+			q.title,
+			q.subject_id,
+			sub.name,
+			a.score,
+			a.total_questions,
+			a.correct_answers,
+			a.time_taken,
+			a.status,
+			a.started_at,
+			a.completed_at
+		FROM quiz_attempts a
+		JOIN quizzes q ON q.id = a.quiz_id
+		LEFT JOIN subjects sub ON sub.id = q.subject_id
+		WHERE a.user_id = $1
+		  AND a.status = 'completed'
+		  AND a.completed_at >= $2
+		  AND a.completed_at <= $3
+		ORDER BY a.completed_at ASC
+	`, learnerID, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("learner raw quiz: %w", err)
+	}
+	for qRows.Next() {
+		var (
+			item      domain.LearnerQuizAttempt
+			subjectID sql.NullInt64
+			subject   sql.NullString
+			score     sql.NullInt64
+			totalQs   sql.NullInt64
+			correct   sql.NullInt64
+			taken     sql.NullInt64
+			completed sql.NullTime
+		)
+		if err := qRows.Scan(
+			&item.AttemptID, &item.QuizID, &item.QuizTitle,
+			&subjectID, &subject, &score, &totalQs, &correct, &taken,
+			&item.Status, &item.StartedAt, &completed,
+		); err != nil {
+			qRows.Close()
+			return nil, err
+		}
+		if subjectID.Valid {
+			item.SubjectID = &subjectID.Int64
+		}
+		if subject.Valid {
+			item.SubjectName = &subject.String
+		}
+		if score.Valid {
+			s := int(score.Int64)
+			item.Score = &s
+		}
+		if totalQs.Valid {
+			v := int(totalQs.Int64)
+			item.TotalQuestions = &v
+		}
+		if correct.Valid {
+			v := int(correct.Int64)
+			item.CorrectAnswers = &v
+		}
+		if taken.Valid {
+			v := int(taken.Int64)
+			item.TimeTaken = &v
+		}
+		if completed.Valid {
+			item.CompletedAt = &completed.Time
+		}
+		out.QuizAttempts = append(out.QuizAttempts, &item)
+	}
+	qRows.Close()
+	if err := qRows.Err(); err != nil {
+		return nil, err
+	}
+
+	return out, nil
+}
