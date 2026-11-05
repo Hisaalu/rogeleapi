@@ -1,19 +1,17 @@
 # ROGELE Analytics
 
-A Python service that provides analytics and reporting for the Rogele
-learning platform.
+A Python service that provides analytics and reporting for ROGELE.
 
 The service consumes the ROGELE Go API over HTTP. It never connects directly
-to the database. Its role is to compute the analyses that are easier in Python
-than in Go: trend analysis, cohort retention, distributions, forecasting, and
-eventually machine learning.
+to the database. Its role is to compute the analysis that are easier in Python
+than in Go: trend analysis, cohort retention, distributions, forecasting.
 
 ## Requirements
 
 - Python 3.12 or later
 - [uv](https://github.com/astral-sh/uv) for dependency management
 - A running ROGELE Go API
-- A valid service token (see below)
+- A valid service token
 
 ## Installation
 
@@ -21,7 +19,7 @@ eventually machine learning.
 
 ## Configuration
 
-Copy `.env.example` to `.env` and fill in the values:
+Create `.env` and fill in the values:
 
     ANALYTICS_APP_NAME=ROGELE Analytics
     ANALYTICS_DEBUG=true
@@ -78,6 +76,9 @@ The container reaches the Go API on the host through
       main.py                  FastAPI application
       routes/                  Endpoint modules
         health.py
+        analytics.py
+        learner_analytics.py
+        
 
 ## Endpoints
 
