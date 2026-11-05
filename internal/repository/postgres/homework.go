@@ -285,7 +285,17 @@ func (r *HomeworkRepo) GetSubmission(ctx context.Context, homeworkID, studentID 
 }
 
 func (r *HomeworkRepo) ListSubmissions(ctx context.Context, homeworkID int64) ([]*domain.HomeworkSubmission, error) {
-	query := `SELECT ` + submissionColumns + ` FROM homework_submissions WHERE homework_id = $1 ORDER BY submitted_at DESC NULLS LAST`
+	query := `
+		SELECT
+			s.id, s.homework_id, s.student_id,
+			s.text_answer, s.grade, s.feedback, s.status,
+			s.submitted_at, s.graded_at, s.created_at, s.updated_at,
+			u.first_name, u.last_name, u.email
+		FROM homework_submissions s
+		LEFT JOIN users u ON u.id = s.student_id
+		WHERE s.homework_id = $1
+		ORDER BY s.submitted_at DESC NULLS LAST
+	`
 	rows, err := r.db.QueryContext(ctx, query, homeworkID)
 	if err != nil {
 		return nil, fmt.Errorf("list submissions: %w", err)
@@ -294,11 +304,54 @@ func (r *HomeworkRepo) ListSubmissions(ctx context.Context, homeworkID int64) ([
 
 	results := make([]*domain.HomeworkSubmission, 0, 16)
 	for rows.Next() {
-		s, err := scanSubmissionRow(rows)
-		if err != nil {
+		var (
+			s         domain.HomeworkSubmission
+			textAnswer sql.NullString
+			grade      sql.NullFloat64
+			feedback   sql.NullString
+			submitted  sql.NullTime
+			graded     sql.NullTime
+			updated    sql.NullTime
+			firstName  sql.NullString
+			lastName   sql.NullString
+			email      sql.NullString
+		)
+		if err := rows.Scan(
+			&s.ID, &s.HomeworkID, &s.StudentID,
+			&textAnswer, &grade, &feedback, &s.Status,
+			&submitted, &graded, &s.CreatedAt, &updated,
+			&firstName, &lastName, &email,
+		); err != nil {
 			return nil, err
 		}
-		results = append(results, s)
+		if textAnswer.Valid {
+			s.TextAnswer = &textAnswer.String
+		}
+		if grade.Valid {
+			s.Grade = &grade.Float64
+		}
+		if feedback.Valid {
+			s.Feedback = &feedback.String
+		}
+		if submitted.Valid {
+			s.SubmittedAt = &submitted.Time
+		}
+		if graded.Valid {
+			s.GradedAt = &graded.Time
+		}
+		if updated.Valid {
+			s.UpdatedAt = &updated.Time
+		}
+		if firstName.Valid {
+			s.StudentFirstName = &firstName.String
+		}
+		if lastName.Valid {
+			s.StudentLastName = &lastName.String
+		}
+		if email.Valid {
+			s.StudentEmail = &email.String
+		}
+		results = append(results, &s)
 	}
 	return results, rows.Err()
 }

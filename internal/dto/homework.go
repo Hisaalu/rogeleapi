@@ -65,7 +65,7 @@ type AttachmentResponse struct {
 	HomeworkID int64  `json:"homework_id"`
 	FileName   string `json:"file_name"`
 	FilePath   string `json:"file_path"`
-	FileSize   *int   `json:"file_size,omitempty"` // Changed to *int
+	FileSize   *int   `json:"file_size,omitempty"`
 }
 
 type SubmissionResponse struct {
@@ -79,7 +79,7 @@ type SubmissionResponse struct {
 	Grade            *float64                 `json:"grade,omitempty"`
 	Feedback         *string                  `json:"feedback,omitempty"`
 	Status           string                   `json:"status"`
-	SubmittedAt      *time.Time               `json:"submitted_at,omitempty"` // Changed to *time.Time
+	SubmittedAt      *time.Time               `json:"submitted_at,omitempty"`
 	Files            []SubmissionFileResponse `json:"files,omitempty"`
 }
 
@@ -88,7 +88,7 @@ type SubmissionFileResponse struct {
 	SubmissionID int64  `json:"submission_id"`
 	FileName     string `json:"file_name"`
 	FilePath     string `json:"file_path"`
-	FileSize     *int   `json:"file_size,omitempty"` // Changed to *int
+	FileSize     *int   `json:"file_size,omitempty"` 
 }
 
 func HomeworkFromDomain(hw *domain.Homework) HomeworkResponse {
@@ -133,14 +133,17 @@ func AttachmentsFromDomain(as []*domain.HomeworkAttachment) []AttachmentResponse
 
 func SubmissionFromDomain(s *domain.HomeworkSubmission, files []*domain.HomeworkSubmissionFile) SubmissionResponse {
 	res := SubmissionResponse{
-		ID:          s.ID,
-		HomeworkID:  s.HomeworkID,
-		StudentID:   s.StudentID,
-		TextAnswer:  s.TextAnswer,
-		Grade:       s.Grade,
-		Feedback:    s.Feedback,
-		Status:      string(s.Status),
-		SubmittedAt: s.SubmittedAt,
+		ID:               s.ID,
+		HomeworkID:       s.HomeworkID,
+		StudentID:        s.StudentID,
+		StudentFirstName: s.StudentFirstName,
+		StudentLastName:  s.StudentLastName,
+		StudentEmail:     s.StudentEmail,
+		TextAnswer:       s.TextAnswer,
+		Grade:            s.Grade,
+		Feedback:         s.Feedback,
+		Status:           string(s.Status),
+		SubmittedAt:      s.SubmittedAt,
 	}
 
 	if len(files) > 0 {

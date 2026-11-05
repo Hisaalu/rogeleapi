@@ -35,17 +35,20 @@ type HomeworkAttachment struct {
 }
 
 type HomeworkSubmission struct {
-	ID          int64          `json:"id"`
-	HomeworkID  int64          `json:"homework_id"`
-	StudentID   int64          `json:"student_id"`
-	TextAnswer  *string        `json:"text_answer,omitempty"`
-	Grade       *float64       `json:"grade,omitempty"`
-	Feedback    *string        `json:"feedback,omitempty"`
-	Status      HomeworkStatus `json:"status"`
-	SubmittedAt *time.Time     `json:"submitted_at,omitempty"`
-	GradedAt    *time.Time     `json:"graded_at,omitempty"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   *time.Time     `json:"updated_at,omitempty"`
+	ID                int64      `json:"id"`
+	HomeworkID        int64      `json:"homework_id"`
+	StudentID         int64      `json:"student_id"`
+	StudentFirstName  *string    `json:"student_first_name,omitempty"`
+	StudentLastName   *string    `json:"student_last_name,omitempty"`
+	StudentEmail      *string    `json:"student_email,omitempty"`
+	TextAnswer        *string    `json:"text_answer,omitempty"`
+	Grade             *float64   `json:"grade,omitempty"`
+	Feedback          *string    `json:"feedback,omitempty"`
+	Status            HomeworkStatus `json:"status"`
+	SubmittedAt       *time.Time `json:"submitted_at,omitempty"`
+	GradedAt          *time.Time `json:"graded_at,omitempty"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         *time.Time `json:"updated_at,omitempty"`
 }
 
 type HomeworkSubmissionFile struct {
