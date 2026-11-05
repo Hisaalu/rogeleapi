@@ -1,7 +1,7 @@
 # ROGELE API
 
 ROGELE is a learning management platform for schools. This repository contains
-the backend HTTP API that serves the web application, the Android application,
+the backend HTTP API that serves the web application, the Android application "coming soon",
 and internal analytics services.
 
 The API is written in Go and uses PostgreSQL as its primary datastore. It
@@ -37,7 +37,7 @@ tooling.
 The ROGELE API is a single Go binary that provides:
 
 - JWT authentication with access and refresh tokens.
-- Role-based access control for admin, teacher, learner, and external users.
+- Role-based access control for admin, teacher, and learner.
 - Lesson management with class scoping, publishing, approval, bookmarks, and
   materials.
 - Homework assignment, submission, and grading.
@@ -64,7 +64,7 @@ workers inside the same process. Work is queued in PostgreSQL so the HTTP layer
 never blocks on network I/O.
 
 The Python analytics service reads from the same database and provides
-aggregated insights (at-risk learners, enrollment trends, score distribution)
+aggregated insights (at-risk learners, enrollment trends, score distribution for the teacher and admin and many more for the learner)
 to the web client.
 
 ## Requirements
@@ -78,10 +78,6 @@ to the web client.
     git clone https://github.com/Hisaalu/rogeleapi.git
     cd rogeleapi
     go mod tidy
-
-Install the migration CLI:
-
-    go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 
 ## Configuration
 
@@ -144,6 +140,10 @@ The `.env` file must not be committed.
 
 ## Running the API
 
+Locally:
+
+    go build ./... 
+
     go run ./cmd/api
 
 Health check:
@@ -161,18 +161,6 @@ password in the connection URL must be URL-encoded (`/` becomes `%2F`).
 
     migrate -path ./migrations \
       -database "postgres://user:pass@127.0.0.1:5432/rogeledb?sslmode=disable" up
-
-Common commands:
-
-    migrate -path ./migrations -database "$URL" up          # apply all
-    migrate -path ./migrations -database "$URL" down 1      # roll back one
-    migrate -path ./migrations -database "$URL" version     # show version
-    migrate create -ext sql -dir ./migrations -seq name     # new migration pair
-
-For databases provisioned before migrations were introduced, mark the current
-version without running migrations:
-
-    migrate -path ./migrations -database "$URL" force 1
 
 ## Project Layout
 
@@ -303,7 +291,7 @@ must include `Authorization: Bearer <access_token>`.
 | POST | /notifications/{id}/read | Mark one notification read |
 | POST | /notifications/read-all | Mark every visible notification read |
 
-Notifications are addressed to a single user (`user_id` set) or broadcast to
+Notifications are addressed to a single user (`user_id` set), certain group e.g teachers, learners or even admins or broadcast to
 everyone (`user_id` null). Read state is tracked per user in
 `notification_reads`, so marking a broadcast read for one user never affects
 another.
@@ -468,11 +456,6 @@ Campaigns resolve recipients by role, by explicit user IDs, or by custom email
 addresses. Delivery status is recorded per recipient. A background reconciler
 marks campaigns as `completed` or `failed`.
 
-Templates live in `email_templates` and may be edited at runtime. Four are
-seeded on startup. Every email is wrapped in a branded shell that reads the
-school name, logo, and colors from `settings`. Changes take effect within 60
-seconds.
-
 ## Error Format
 
     {
@@ -536,15 +519,7 @@ Every request is tagged with a request ID returned in `X-Request-ID`.
 
 ## Deployment
 
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/rogele ./cmd/api
-
-Run migrations before starting the new binary:
-
-    migrate -path ./migrations -database "$DATABASE_URL" up
-
-Configuration comes from environment variables. `/health` is available for
-liveness and readiness checks. Graceful shutdown drains in-flight requests and
-stops background workers on `SIGINT` or `SIGTERM`.
+Currently the api is deployed on render using docker run time
 
 ## License
 
