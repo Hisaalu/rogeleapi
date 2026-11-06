@@ -146,7 +146,7 @@ def _recommendations(
             else None
         )
         if peak_hour is not None:
-            label = f"{peak_hour:02d}:00–{peak_hour + 1:02d}:00"
+            label = f"{peak_hour:02d}:00–{peak_hour + 2:02d}:00"
             recs.append(
                 {
                     "tone": "info",
