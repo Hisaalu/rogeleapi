@@ -146,7 +146,7 @@ func (s *Service) deliver(ctx context.Context, job *domain.EmailJob) {
 		branding = defaultBranding
 	}
 
-	wrapped := WrapHTML(html, branding)
+	wrapped := WrapHTML(html, branding, job.ToEmail)
 
 	msg := Message{
 		To:      job.ToEmail,

@@ -18,8 +18,8 @@ type Branding struct {
 }
 
 var defaultBranding = Branding{
-	SchoolName:   "Rogele",
-	Tagline:      "E-Learning Platform",
+	SchoolName:   "RAYS OF GRACE",
+	Tagline:      "E-LEARNING PLATFORM",
 	ColorPrimary: "#7f2677",
 	ColorAccent:  "#f06724",
 }

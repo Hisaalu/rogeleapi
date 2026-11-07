@@ -20,7 +20,7 @@ func RenderText(tmpl string, data map[string]any) (string, error) {
 	return buf.String(), nil
 }
 
-func WrapHTML(body string, b Branding) string {
+func WrapHTML(body string, b Branding, recipientEmail string) string {
 	body = strings.TrimSpace(body)
 
 	primary := b.ColorPrimary
@@ -50,6 +50,14 @@ func WrapHTML(body string, b Branding) string {
 		`, html.EscapeString(b.WebsiteURL), primary, html.EscapeString(b.WebsiteURL))
 	}
 
+	recipientLine := ""
+	if recipientEmail != "" {
+		recipientLine = fmt.Sprintf(
+			`<p style="margin:0 0 6px;">This email was sent to %s.</p>`,
+			html.EscapeString(recipientEmail),
+		)
+	}
+
 	return `<!DOCTYPE html>
 <html>
 <head>
@@ -59,7 +67,7 @@ func WrapHTML(body string, b Branding) string {
 <body style="margin:0;padding:40px 20px;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;line-height:1.6;color:#000;">
 	<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.06);">
 		<tr>
-			<td style="background-color:` + primary + `;padding:36px 30px;text-align:center;">
+			<td style="padding:36px 30px;text-align:center;">
 				` + header + `
 			</td>
 		</tr>
@@ -70,6 +78,7 @@ func WrapHTML(body string, b Branding) string {
 		</tr>
 		<tr>
 			<td style="background:#f8fafc;padding:20px 30px;text-align:center;font-size:12px;color:#666;border-top:1px solid #e2e8f0;">
+				` + recipientLine + `
 				<p style="margin:0 0 6px;">&copy; ` + fmt.Sprint(currentYear()) + ` ` + html.EscapeString(schoolName) + `. All rights reserved.</p>
 				` + footer + `
 			</td>
