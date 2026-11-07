@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"log/slog"
 	"strings"
 	"time"
@@ -300,7 +301,9 @@ func prepareEmailBody(raw string) string {
 			continue
 		}
 
-		line := strings.ReplaceAll(p, "\n", "<br>\n")
+		line := html.EscapeString(p)
+		line = linkifyEscaped(line)
+		line = strings.ReplaceAll(line, "\n", "<br>\n")
 
 		style := "margin:0 0 16px;"
 		if i == 0 && isGreeting(p) {
@@ -315,6 +318,72 @@ func prepareEmailBody(raw string) string {
 	}
 
 	return strings.TrimRight(out.String(), "\n")
+}
+
+func linkifyEscaped(s string) string {
+	var out strings.Builder
+	i := 0
+	for i < len(s) {
+		idx := strings.Index(s[i:], "http")
+		if idx < 0 {
+			out.WriteString(s[i:])
+			break
+		}
+		idx += i
+		if idx > 0 {
+			prev := s[idx-1]
+			if !(prev == ' ' || prev == '\n' || prev == '\t' || prev == '(' || prev == '[' || prev == '"') {
+				out.WriteString(s[i:idx])
+				i = idx
+				out.WriteString("h")
+				i++
+				continue
+			}
+		}
+		rest := s[idx:]
+		if !strings.HasPrefix(rest, "http://") && !strings.HasPrefix(rest, "https://") {
+			out.WriteString(s[i : idx+4])
+			i = idx + 4
+			continue
+		}
+
+		end := idx
+		for end < len(s) {
+			c := s[end]
+			if c == ' ' || c == '\n' || c == '\t' || c == '<' || c == '"' || c == ')' || c == ']' || c == ',' {
+				break
+			}
+			end++
+		}
+		url := s[idx:end]
+		if url == "" {
+			out.WriteString(s[i : idx+4])
+			i = idx + 4
+			continue
+		}
+
+		trail := ""
+		for len(url) > 0 {
+			last := url[len(url)-1]
+			if last == '.' || last == ',' || last == ';' || last == ':' || last == '!' || last == '?' {
+				trail = string(last) + trail
+				url = url[:len(url)-1]
+				end--
+			} else {
+				break
+			}
+		}
+
+		out.WriteString(s[i:idx])
+		out.WriteString(`<a href="`)
+		out.WriteString(url)
+		out.WriteString(`" target="_blank" rel="noopener noreferrer" style="text-decoration:underline;">`)
+		out.WriteString(url)
+		out.WriteString(`</a>`)
+		out.WriteString(trail)
+		i = end
+	}
+	return out.String()
 }
 
 func isGreeting(p string) bool {
