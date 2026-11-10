@@ -39,7 +39,7 @@ func WrapHTML(body string, b Branding, recipientEmail string) string {
 	var header string
 	if b.LogoURL != "" {
 		header = fmt.Sprintf(`
-			<img src="%s" alt="%s" style="max-height:60px;max-width:220px;display:block;margin:0 auto 12px;" />
+			<img src="%s" alt="%s" style="max-height:55px;max-width:220px;display:block;margin:0 auto;"" />
 		`, html.EscapeString(b.LogoURL), html.EscapeString(schoolName))
 	}
 
@@ -67,12 +67,12 @@ func WrapHTML(body string, b Branding, recipientEmail string) string {
 <body style="margin:0;padding:40px 20px;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;line-height:1.6;color:#000;">
 	<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.06);">
 		<tr>
-			<td style="padding:36px 30px;text-align:center;">
+			<td style="padding:20px 30px 0;text-align:center;">
 				` + header + `
 			</td>
 		</tr>
 		<tr>
-			<td style="padding:36px 30px;">
+			<td style="padding:25px 37px 39px;">
 				` + body + `
 			</td>
 		</tr>

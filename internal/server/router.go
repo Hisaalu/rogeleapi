@@ -154,6 +154,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 				r.Get("/questions", quizHandler.ListQuestions)
 				r.Post("/questions", quizHandler.AddQuestion)
 				r.Delete("/questions/{questionId}", quizHandler.DeleteQuestion)
+				r.Patch("/questions/{questionId}", quizHandler.UpdateQuestion)
 				r.Post("/attempts", quizHandler.StartAttempt)
 				r.Get("/attempts", quizHandler.ListAttempts)
 				r.Delete("/attempts", quizHandler.DeleteAllAttempts)

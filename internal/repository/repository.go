@@ -128,6 +128,7 @@ type QuizRepository interface {
 	ListQuestions(ctx context.Context, quizID int64) ([]*domain.QuizQuestion, error)
 	CreateQuestion(ctx context.Context, q *domain.QuizQuestion) (*domain.QuizQuestion, error)
 	DeleteQuestion(ctx context.Context, id int64) error
+	UpdateQuestion(ctx context.Context, q *domain.QuizQuestion) (*domain.QuizQuestion, error)
 
 	CreateAttempt(ctx context.Context, a *domain.QuizAttempt) (*domain.QuizAttempt, error)
 	GetAttempt(ctx context.Context, id int64) (*domain.QuizAttempt, error)

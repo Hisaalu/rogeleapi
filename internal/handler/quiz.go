@@ -699,3 +699,45 @@ func (h *QuizHandler) SaveAttemptAnswer(w http.ResponseWriter, r *http.Request) 
 	}
 	httputil.JSON(w, http.StatusOK, map[string]string{"status": "saved"})
 }
+
+func (h *QuizHandler) UpdateQuestion(w http.ResponseWriter, r *http.Request) {
+	actor, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	
+	quizID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "quiz id must be an integer")
+		return
+	}
+	
+	questionID, err := strconv.ParseInt(chi.URLParam(r, "questionId"), 10, 64)
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_ID", "question id must be an integer")
+		return
+	}
+
+	var req dto.CreateQuestionRequest
+	if err := httputil.DecodeJSON(r, &req); err != nil {
+		httputil.Error(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+
+	q, err := h.svc.UpdateQuestion(r.Context(), quizID, questionID, actor, service.CreateQuestionInput{
+		Question:      req.Question,
+		OptionA:       req.OptionA,
+		OptionB:       req.OptionB,
+		OptionC:       req.OptionC,
+		OptionD:       req.OptionD,
+		CorrectAnswer: req.CorrectAnswer,
+		Points:        req.Points,
+		Explanation:   req.Explanation,
+	})
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+	
+	httputil.JSON(w, http.StatusOK, dto.QuestionFromDomain(q))
+}

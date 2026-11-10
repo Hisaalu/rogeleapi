@@ -46,9 +46,9 @@ type AuthResult struct {
 }
 
 const (
-	resetTokenTTL        = 30 * time.Minute
+	resetTokenTTL        = 20 * time.Minute
 	resetRateLimit       = 3
-	resetRateLimitWindow = 15 * time.Minute
+	resetRateLimitWindow = 30 * time.Minute
 )
 
 type AuthService struct {

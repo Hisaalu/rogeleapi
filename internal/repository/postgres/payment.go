@@ -28,9 +28,15 @@ const paymentColumns = `
 `
 
 func (r *PaymentRepo) Create(ctx context.Context, p *domain.Payment) (*domain.Payment, error) {
-	var gatewayJSON []byte
+	var gatewayArg any
 	if p.PaymentGatewayResponse != nil {
-		gatewayJSON, _ = json.Marshal(p.PaymentGatewayResponse)
+		b, err := json.Marshal(p.PaymentGatewayResponse)
+		if err != nil {
+			return nil, fmt.Errorf("marshal gateway response: %w", err)
+		}
+		gatewayArg = string(b)
+	} else {
+		gatewayArg = nil
 	}
 
 	query := `
@@ -43,7 +49,7 @@ func (r *PaymentRepo) Create(ctx context.Context, p *domain.Payment) (*domain.Pa
 
 	row := r.db.QueryRowContext(ctx, query,
 		p.UserID, p.SubscriptionID, p.Amount, p.PlanType, p.PaymentMethod,
-		p.TransactionID, gatewayJSON, p.PhoneNumber, p.Status,
+		p.TransactionID, gatewayArg, p.PhoneNumber, p.Status,
 		p.PaymentDate,
 	)
 	result, err := scanPayment(row)
@@ -113,9 +119,15 @@ func (r *PaymentRepo) List(ctx context.Context, f repository.PaymentFilter) ([]*
 }
 
 func (r *PaymentRepo) Update(ctx context.Context, p *domain.Payment) error {
-	var gatewayJSON []byte
+	var gatewayArg any
 	if p.PaymentGatewayResponse != nil {
-		gatewayJSON, _ = json.Marshal(p.PaymentGatewayResponse)
+		b, err := json.Marshal(p.PaymentGatewayResponse)
+		if err != nil {
+			return fmt.Errorf("marshal gateway response: %w", err)
+		}
+		gatewayArg = string(b)
+	} else {
+		gatewayArg = nil
 	}
 
 	query := `
@@ -129,7 +141,7 @@ func (r *PaymentRepo) Update(ctx context.Context, p *domain.Payment) error {
 	res, err := r.db.ExecContext(ctx, query,
 		p.SubscriptionID, p.Amount, p.PlanType,
 		p.PaymentMethod, p.TransactionID,
-		gatewayJSON, p.PhoneNumber,
+		gatewayArg, p.PhoneNumber,
 		p.Status, p.PaymentDate,
 		p.ID,
 	)

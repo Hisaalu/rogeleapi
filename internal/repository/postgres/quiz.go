@@ -763,4 +763,46 @@ func (r *QuizRepo) Count(ctx context.Context, f repository.QuizFilter) (int, err
 	return n, err
 }
 
+func (r *QuizRepo) UpdateQuestion(ctx context.Context, q *domain.QuizQuestion) (*domain.QuizQuestion, error) {
+	query := `
+		UPDATE quiz_questions
+		SET
+			question = $1,
+			option_a = $2,
+			option_b = $3,
+			option_c = $4,
+			option_d = $5,
+			correct_answer = $6,
+			points = $7,
+			explanation = $8
+		WHERE id = $9
+		RETURNING id, quiz_id, question, option_a, option_b, option_c, option_d, correct_answer, points, explanation, created_at
+	`
+
+	var out domain.QuizQuestion
+	err := r.db.QueryRowContext(ctx, query,
+		q.Question,
+		q.OptionA,
+		q.OptionB,
+		q.OptionC,
+		q.OptionD,
+		q.CorrectAnswer,
+		q.Points,
+		q.Explanation,
+		q.ID,
+	).Scan(
+		&out.ID, &out.QuizID, &out.Question, &out.OptionA, &out.OptionB,
+		&out.OptionC, &out.OptionD, &out.CorrectAnswer, &out.Points,
+		&out.Explanation, &out.CreatedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, dberr.Translate(fmt.Errorf("update question: %w", err))
+	}
+	return &out, nil
+}
+
 var _ repository.QuizRepository = (*QuizRepo)(nil)

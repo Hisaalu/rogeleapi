@@ -12,11 +12,11 @@ var DefaultTemplates = []DefaultTemplate{
 		Subject: "Reset your password",
 		Body: `<p style="font-size:18px;font-weight:600;margin:0 0 16px;">Hi {{.FirstName}},</p>
 <p style="margin:0 0 16px;">A password reset for your account was requested.</p>
-<p style="margin:0 0 16px;">Click the button below to choose a new password. This link is valid for 30 minutes.</p>
+<p style="margin:0 0 16px;">Click the button below to choose a new password. This link is valid for 20 minutes.</p>
 <p style="text-align:center;margin:28px 0;">
-  <a href="{{.ResetLink}}" style="display:inline-block;padding:14px 32px;background-color:{{._brand_accent}};color:#ffffff;text-decoration:none;border-radius:50px;font-weight:600;font-size:15px;">Reset Password</a>
+  <a href="{{.ResetLink}}" style="display:inline-block;padding:14px 32px;background-color:{{._brand_accent}};color:#ffffff;text-decoration:none;border-radius:15px;font-weight:600;font-size:15px;">Reset Password</a>
 </p>
-<p style="margin:0;color:#888;font-size:13px;">If you did not make this request, you can ignore this email.</p>`,
+<p style="margin:0;color:#000;font-size:13px;">If you did not make this request, please contact support and ignore this email.</p>`,
 	},
 	{
 		Name:    "payment_confirmation",
@@ -29,7 +29,7 @@ var DefaultTemplates = []DefaultTemplate{
   <tr><td style="padding:6px 14px 6px 0;color:#666;">Transaction</td><td>{{.TransactionID}}</td></tr>
 </table>
 <p style="margin:0 0 16px;">Your subscription is active until <strong>{{.EndDate}}</strong>.</p>
-<p style="margin:0;color:#888;font-size:13px;">Thank you for supporting the platform.</p>`,
+<p style="margin:0;color:#000;font-size:13px;">Thank you for supporting the platform.</p>`,
 	},
 	{
 		Name:    "subscription_expiring",
@@ -38,7 +38,7 @@ var DefaultTemplates = []DefaultTemplate{
 <p style="margin:0 0 16px;">Your subscription expires on <strong>{{.EndDate}}</strong> ({{.DaysLeft}} days from now).</p>
 <p style="margin:0 0 16px;">Renew now to keep uninterrupted access to your lessons, homework, and quizzes.</p>
 <p style="text-align:center;margin:28px 0;">
-  <a href="{{.RenewLink}}" style="display:inline-block;padding:14px 32px;background-color:{{._brand_accent}};color:#ffffff;text-decoration:none;border-radius:50px;font-weight:600;font-size:15px;">Renew Now</a>
+  <a href="{{.RenewLink}}" style="display:inline-block;padding:14px 32px;background-color:{{._brand_accent}};color:#ffffff;text-decoration:none;border-radius:15px;font-weight:600;font-size:15px;">Renew Now</a>
 </p>`,
 	},
 	{

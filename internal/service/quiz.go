@@ -750,3 +750,34 @@ func (s *QuizService) CountList(ctx context.Context, actor ActorContext, f repos
 	}
 	return s.quizzes.Count(ctx, f)
 }
+
+func (s *QuizService) UpdateQuestion(ctx context.Context, quizID, questionID int64, actor ActorContext, in CreateQuestionInput) (*domain.QuizQuestion, error) {
+	q, err := s.quizzes.GetByID(ctx, quizID)
+	if err != nil {
+		return nil, err
+	}
+	if err := canEditQuiz(q, actor); err != nil {
+		return nil, err
+	}
+	if in.Question == "" {
+		return nil, fmt.Errorf("%w: question text is required", domain.ErrInvalidInput)
+	}
+	if in.Points < 1 {
+		in.Points = 1
+	}
+
+	qq := &domain.QuizQuestion{
+		ID:            questionID,
+		QuizID:        &quizID,
+		Question:      in.Question,
+		OptionA:       in.OptionA,
+		OptionB:       in.OptionB,
+		OptionC:       in.OptionC,
+		OptionD:       in.OptionD,
+		CorrectAnswer: in.CorrectAnswer,
+		Points:        in.Points,
+		Explanation:   in.Explanation,
+	}
+
+	return s.quizzes.UpdateQuestion(ctx, qq)
+}
