@@ -131,6 +131,11 @@ func (s *SubscriptionService) GetMyTrial(ctx context.Context, actor ActorContext
 		resetDate = time.Now()
 	}
 
+	u, err := s.users.GetByID(ctx, actor.UserID)
+	if err == nil && u.CreatedAt.After(resetDate) {
+		resetDate = u.CreatedAt
+	}
+
 	return s.trials.GetDynamicTrial(ctx, actor.UserID, durationDays, resetDate)
 }
 
