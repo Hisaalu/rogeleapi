@@ -55,8 +55,8 @@ func (r *UserRepo) GetByID(ctx context.Context, id int64) (*domain.User, error) 
 }
 
 func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
-	query := `SELECT ` + userColumns + ` FROM users WHERE LOWER(email) = LOWER($1)`
-	row := r.db.QueryRowContext(ctx, query, email)
+	query := `SELECT ` + userColumns + ` FROM users WHERE email = $1`
+	row := r.db.QueryRowContext(ctx, query, strings.ToLower(strings.TrimSpace(email)))
 	return scanUser(row)
 }
 

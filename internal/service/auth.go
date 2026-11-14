@@ -131,12 +131,17 @@ func (s *AuthService) Register(ctx context.Context, in RegisterInput) (*AuthResu
 		return nil, fmt.Errorf("create user: %w", err)
 	}
 
-	if s.subs != nil {
+		if s.subs != nil {
 		actor := ActorContext{UserID: created.ID, Role: created.Role}
 		_, _ = s.subs.StartTrial(ctx, actor)
 	}
 
-	s.activity.Log(ctx, created.ID, "signup", "created account")
+	cid := created.ID
+	go func() {
+		bg, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		s.activity.Log(bg, cid, "signup", "created account")
+	}()
 
 	return s.issueTokens(created)
 }
@@ -160,8 +165,13 @@ func (s *AuthService) Login(ctx context.Context, in LoginInput) (*AuthResult, er
 		return nil, fmt.Errorf("%w: Invalid Email/Password!", domain.ErrUnauthorized)
 	}
 
-	_ = s.users.UpdateLastLogin(ctx, u.ID)
-	s.activity.Log(ctx, u.ID, "login", "signed in")
+	uid := u.ID
+	go func() {
+		bg, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = s.users.UpdateLastLogin(bg, uid)
+		s.activity.Log(bg, uid, "login", "signed in")
+	}()
 
 	return s.issueTokens(u)
 }
