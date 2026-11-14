@@ -88,10 +88,10 @@ type HomeworkRepository interface {
 	GetByID(ctx context.Context, id int64) (*domain.Homework, error)
 	Update(ctx context.Context, hw *domain.Homework) error
 	Delete(ctx context.Context, id int64) error
-	List(ctx context.Context, f HomeworkFilter) ([]*domain.Homework, error)
+	List(ctx context.Context, f HomeworkFilter) ([]*domain.Homework, int, error) 
 
 	ListAttachments(ctx context.Context, homeworkID int64) ([]*domain.HomeworkAttachment, error)
-	GetAttachmentByID(ctx context.Context, id int64) (*domain.HomeworkAttachment, error) // ADDED
+	GetAttachmentByID(ctx context.Context, id int64) (*domain.HomeworkAttachment, error) 
 	CreateAttachment(ctx context.Context, a *domain.HomeworkAttachment) (*domain.HomeworkAttachment, error)
 	DeleteAttachment(ctx context.Context, id int64) error
 

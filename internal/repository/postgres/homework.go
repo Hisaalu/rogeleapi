@@ -91,7 +91,7 @@ func (r *HomeworkRepo) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (r *HomeworkRepo) List(ctx context.Context, f repository.HomeworkFilter) ([]*domain.Homework, error) {
+func (r *HomeworkRepo) List(ctx context.Context, f repository.HomeworkFilter) ([]*domain.Homework, int, error) {
 	var where []string
 	var args []any
 	i := 1
@@ -122,7 +122,7 @@ func (r *HomeworkRepo) List(ctx context.Context, f repository.HomeworkFilter) ([
 		i++
 	}
 
-	query := `SELECT ` + homeworkColumns + ` FROM homework`
+	query := `SELECT ` + homeworkColumns + `, COUNT(*) OVER() AS total_count FROM homework`
 	if len(where) > 0 {
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
@@ -140,19 +140,49 @@ func (r *HomeworkRepo) List(ctx context.Context, f repository.HomeworkFilter) ([
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("list homework: %w", err)
+		return nil, 0, fmt.Errorf("list homework: %w", err)
 	}
 	defer rows.Close()
 
 	results := make([]*domain.Homework, 0, 16)
+	total := 0
 	for rows.Next() {
-		hw, err := scanHomeworkRow(rows)
+		var (
+			hw        domain.Homework
+			desc      sql.NullString
+			updatedAt sql.NullTime
+		)
+		err := rows.Scan(
+			&hw.ID, &hw.TeacherID, &hw.ClassID, &hw.SubjectID, &hw.Title, &desc,
+			&hw.DueDate, &hw.IsActive, &hw.CreatedAt, &updatedAt, &total,
+		)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-		results = append(results, hw)
+		if desc.Valid {
+			hw.Description = &desc.String
+		}
+		if updatedAt.Valid {
+			hw.UpdatedAt = &updatedAt.Time
+		}
+		results = append(results, &hw)
 	}
-	return results, rows.Err()
+
+	if total == 0 && len(results) == 0 {
+		cq := `SELECT COUNT(*) FROM homework`
+		if len(where) > 0 {
+			cq += " WHERE " + strings.Join(where, " AND ")
+		}
+		countArgs := args[:len(args)-(btoi(f.Limit>0)+btoi(f.Offset>0))]
+		_ = r.db.QueryRowContext(ctx, cq, countArgs...).Scan(&total)
+	}
+
+	return results, total, rows.Err()
+}
+
+func btoi(b bool) int {
+	if b { return 1 }
+	return 0
 }
 
 const homeworkAttachmentColumns = `

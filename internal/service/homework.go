@@ -119,7 +119,7 @@ func (s *HomeworkService) GetByID(ctx context.Context, id int64, actor ActorCont
 	return hw, nil
 }
 
-func (s *HomeworkService) List(ctx context.Context, actor ActorContext, f repository.HomeworkFilter) ([]*domain.Homework, error) {
+func (s *HomeworkService) List(ctx context.Context, actor ActorContext, f repository.HomeworkFilter) ([]*domain.Homework, int, error) {
 	switch actor.Role {
 	case domain.RoleAdmin:
 	case domain.RoleTeacher:
@@ -127,16 +127,16 @@ func (s *HomeworkService) List(ctx context.Context, actor ActorContext, f reposi
 	case domain.RoleLearner, domain.RoleExternal:
 		classID, err := s.learnerClassID(ctx, actor)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		if classID == nil {
-			return []*domain.Homework{}, nil
+			return []*domain.Homework{}, 0, nil
 		}
 		f.ClassID = classID
 		active := true
 		f.IsActive = &active
 	default:
-		return nil, domain.ErrForbidden
+		return nil, 0, domain.ErrForbidden
 	}
 	return s.repo.List(ctx, f)
 }
