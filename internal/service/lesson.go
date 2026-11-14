@@ -123,6 +123,37 @@ func (s *LessonService) List(ctx context.Context, actor ActorContext, f reposito
 	return s.lessons.List(ctx, f)
 }
 
+func (s *LessonService) ListWithTotal(
+	ctx context.Context,
+	actor ActorContext,
+	f repository.LessonFilter,
+) (repository.LessonListResult, error) {
+	switch actor.Role {
+	case domain.RoleAdmin:
+	case domain.RoleTeacher:
+		uid := actor.UserID
+		f.TeacherID = &uid
+	case domain.RoleLearner, domain.RoleExternal:
+		pub := true
+		f.PublishedAt = &pub
+		classID, err := s.learnerClassID(ctx, actor)
+		if err != nil {
+			return repository.LessonListResult{}, err
+		}
+		if classID == nil {
+			return repository.LessonListResult{Lessons: []*domain.Lesson{}, Total: 0}, nil
+		}
+		f.ClassID = classID
+	default:
+		return repository.LessonListResult{}, domain.ErrForbidden
+	}
+	return s.lessons.ListWithTotal(ctx, f)
+}
+
+func (s *LessonService) CountBookmarks(ctx context.Context, userID int64) (int, error) {
+	return s.lessons.CountBookmarks(ctx, userID)
+}
+
 func (s *LessonService) Update(ctx context.Context, id int64, actor ActorContext, in UpdateLessonInput) (*domain.Lesson, error) {
 	l, err := s.lessons.GetByID(ctx, id)
 	if err != nil {
@@ -274,6 +305,14 @@ func (s *LessonService) ToggleBookmark(ctx context.Context, userID, lessonID int
 
 func (s *LessonService) ListBookmarks(ctx context.Context, userID int64) ([]*domain.Lesson, error) {
 	return s.lessons.ListBookmarks(ctx, userID)
+}
+
+func (s *LessonService) ListBookmarksPaged(
+	ctx context.Context,
+	userID int64,
+	limit, offset int,
+) ([]*domain.Lesson, error) {
+	return s.lessons.ListBookmarksPaged(ctx, userID, limit, offset)
 }
 
 func (s *LessonService) ListMaterials(ctx context.Context, lessonID int64, actor ActorContext) ([]*domain.LessonMaterial, error) {

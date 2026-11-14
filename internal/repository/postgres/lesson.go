@@ -24,6 +24,12 @@ const lessonColumns = `
 	video_url, duration, is_published, is_approved,
 	views, created_at, updated_at
 `
+const lessonColumnsWithTotal = `
+	id, title, content, subject_id, class_id, teacher_id,
+	video_url, duration, is_published, is_approved,
+	views, created_at, updated_at,
+	COUNT(*) OVER() AS total_count
+`
 
 func (r *LessonRepo) Create(ctx context.Context, l *domain.Lesson) (*domain.Lesson, error) {
 	query := `
@@ -90,10 +96,18 @@ func (r *LessonRepo) Delete(ctx context.Context, id int64) error {
 }
 
 func (r *LessonRepo) List(ctx context.Context, f repository.LessonFilter) ([]*domain.Lesson, error) {
+	res, err := r.ListWithTotal(ctx, f)
+	if err != nil {
+		return nil, err
+	}
+	return res.Lessons, nil
+}
+
+func (r *LessonRepo) ListWithTotal(ctx context.Context, f repository.LessonFilter) (repository.LessonListResult, error) {
 	where, args := buildLessonWhere(f)
 	i := len(args) + 1
 
-	query := `SELECT ` + lessonColumns + ` FROM lessons`
+	query := `SELECT ` + lessonColumnsWithTotal + ` FROM lessons`
 	if where != "" {
 		query += " WHERE " + where
 	}
@@ -111,19 +125,79 @@ func (r *LessonRepo) List(ctx context.Context, f repository.LessonFilter) ([]*do
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("list lessons: %w", err)
+		return repository.LessonListResult{}, fmt.Errorf("list lessons: %w", err)
 	}
 	defer rows.Close()
 
 	results := make([]*domain.Lesson, 0, 16)
+	total := 0
 	for rows.Next() {
-		l, err := scanLessonRow(rows)
+		l, t, err := scanLessonRowWithTotal(rows)
 		if err != nil {
-			return nil, err
+			return repository.LessonListResult{}, err
 		}
 		results = append(results, l)
+		total = t
 	}
-	return results, rows.Err()
+	if err := rows.Err(); err != nil {
+		return repository.LessonListResult{}, err
+	}
+
+	if total == 0 && len(results) == 0 {
+		whereOnly, argsOnly := buildLessonWhere(f)
+		cq := `SELECT COUNT(*) FROM lessons`
+		if whereOnly != "" {
+			cq += " WHERE " + whereOnly
+		}
+		_ = r.db.QueryRowContext(ctx, cq, argsOnly...).Scan(&total)
+	}
+
+	return repository.LessonListResult{Lessons: results, Total: total}, nil
+}
+
+func scanLessonRowWithTotal(s lessonScanner) (*domain.Lesson, int, error) {
+	var (
+		l         domain.Lesson
+		content   sql.NullString
+		subjectID sql.NullInt64
+		classID   sql.NullInt64
+		teacherID sql.NullInt64
+		videoURL  sql.NullString
+		duration  sql.NullInt64
+		updatedAt sql.NullTime
+		total     int
+	)
+	err := s.Scan(
+		&l.ID, &l.Title, &content, &subjectID, &classID, &teacherID,
+		&videoURL, &duration, &l.IsPublished, &l.IsApproved,
+		&l.Views, &l.CreatedAt, &updatedAt, &total,
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	if content.Valid {
+		l.Content = &content.String
+	}
+	if subjectID.Valid {
+		l.SubjectID = &subjectID.Int64
+	}
+	if classID.Valid {
+		l.ClassID = &classID.Int64
+	}
+	if teacherID.Valid {
+		l.TeacherID = &teacherID.Int64
+	}
+	if videoURL.Valid {
+		l.VideoURL = &videoURL.String
+	}
+	if duration.Valid {
+		d := int(duration.Int64)
+		l.Duration = &d
+	}
+	if updatedAt.Valid {
+		l.UpdatedAt = &updatedAt.Time
+	}
+	return &l, total, nil
 }
 
 func (r *LessonRepo) IncrementViews(ctx context.Context, id int64) error {
@@ -239,6 +313,38 @@ func (r *LessonRepo) ListBookmarks(ctx context.Context, userID int64) ([]*domain
 	defer rows.Close()
 
 	results := make([]*domain.Lesson, 0, 16)
+	for rows.Next() {
+		l, err := scanLessonRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, l)
+	}
+	return results, rows.Err()
+}
+
+func (r *LessonRepo) ListBookmarksPaged(
+	ctx context.Context,
+	userID int64,
+	limit, offset int,
+) ([]*domain.Lesson, error) {
+	query := `
+		SELECT l.id, l.title, l.content, l.subject_id, l.class_id, l.teacher_id,
+		       l.video_url, l.duration, l.is_published, l.is_approved,
+		       l.views, l.created_at, l.updated_at
+		FROM lessons l
+		INNER JOIN bookmarks b ON b.lesson_id = l.id
+		WHERE b.user_id = $1
+		ORDER BY b.created_at DESC
+		LIMIT $2 OFFSET $3
+	`
+	rows, err := r.db.QueryContext(ctx, query, userID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list bookmarks paged: %w", err)
+	}
+	defer rows.Close()
+
+	results := make([]*domain.Lesson, 0, limit)
 	for rows.Next() {
 		l, err := scanLessonRow(rows)
 		if err != nil {
@@ -383,6 +489,14 @@ func (r *LessonRepo) Count(ctx context.Context, f repository.LessonFilter) (int,
 
 	var n int
 	err := r.db.QueryRowContext(ctx, query, args...).Scan(&n)
+	return n, err
+}
+
+func (r *LessonRepo) CountBookmarks(ctx context.Context, userID int64) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM bookmarks WHERE user_id = $1`, userID,
+	).Scan(&n)
 	return n, err
 }
 

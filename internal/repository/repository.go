@@ -44,12 +44,18 @@ type LessonFilter struct {
 	Offset      int
 }
 
+type LessonListResult struct {
+	Lessons []*domain.Lesson
+	Total   int
+}
+
 type LessonRepository interface {
 	Create(ctx context.Context, l *domain.Lesson) (*domain.Lesson, error)
 	GetByID(ctx context.Context, id int64) (*domain.Lesson, error)
 	Update(ctx context.Context, l *domain.Lesson) error
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context, f LessonFilter) ([]*domain.Lesson, error)
+		ListWithTotal(ctx context.Context, f LessonFilter) (LessonListResult, error)
 	IncrementViews(ctx context.Context, id int64) error
 
 	ListMaterials(ctx context.Context, lessonID int64) ([]*domain.LessonMaterial, error)
@@ -61,6 +67,8 @@ type LessonRepository interface {
 	AddBookmark(ctx context.Context, b *domain.Bookmark) error
 	RemoveBookmark(ctx context.Context, userID, lessonID int64) error
 	ListBookmarks(ctx context.Context, userID int64) ([]*domain.Lesson, error)
+	ListBookmarksPaged(ctx context.Context, userID int64, limit, offset int) ([]*domain.Lesson, error)
+	CountBookmarks(ctx context.Context, userID int64) (int, error) 
 
 	Count(ctx context.Context, f LessonFilter) (int, error)
 }

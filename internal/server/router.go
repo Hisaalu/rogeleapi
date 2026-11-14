@@ -91,6 +91,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 			r.Use(middleware.Authenticate(deps.Tokens))
 			r.Get("/", lessonHandler.List)
 			r.Get("/bookmarks", lessonHandler.ListBookmarks)
+			r.Get("/bookmarks/count", lessonHandler.CountBookmarks)
 			r.Post("/", lessonHandler.Create)
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", lessonHandler.Get)

@@ -75,23 +75,17 @@ func (h *LessonHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	lessons, err := h.svc.List(r.Context(), actor, filter)
+	res, err := h.svc.ListWithTotal(r.Context(), actor, filter)
 	if err != nil {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
 
-	// Call CountList (requires the service/repo additions above)
-	total, _ := h.svc.CountList(r.Context(), actor, filter)
-
-	out := make([]dto.LessonResponse, 0, len(lessons))
-	for _, l := range lessons {
-		out = append(out, h.enricher.enrich(r.Context(), l, actor.UserID))
-	}
+	out := h.enricher.enrichMany(r.Context(), res.Lessons, actor.UserID)
 
 	lastPage := 1
-	if perPage > 0 && total > 0 {
-		lastPage = (total + perPage - 1) / perPage
+	if perPage > 0 && res.Total > 0 {
+		lastPage = (res.Total + perPage - 1) / perPage
 	}
 
 	httputil.JSON(w, http.StatusOK, map[string]any{
@@ -99,7 +93,7 @@ func (h *LessonHandler) List(w http.ResponseWriter, r *http.Request) {
 		"meta": map[string]int{
 			"page":      page,
 			"per_page":  perPage,
-			"total":     total,
+			"total":     res.Total,
 			"last_page": lastPage,
 		},
 	})
@@ -274,16 +268,71 @@ func (h *LessonHandler) ListBookmarks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	lessons, err := h.svc.ListBookmarks(r.Context(), actor.UserID)
+
+	pageStr := r.URL.Query().Get("page")
+	perPageStr := r.URL.Query().Get("per_page")
+	paged := pageStr != "" || perPageStr != ""
+
+	page, _ := strconv.Atoi(pageStr)
+	if page < 1 {
+		page = 1
+	}
+	perPage, _ := strconv.Atoi(perPageStr)
+	if perPage < 1 {
+		perPage = 20
+	}
+	if perPage > 100 {
+		perPage = 100
+	}
+	offset := (page - 1) * perPage
+
+	var lessons []*domain.Lesson
+	var err error
+	if paged {
+		lessons, err = h.svc.ListBookmarksPaged(r.Context(), actor.UserID, perPage, offset)
+	} else {
+		lessons, err = h.svc.ListBookmarks(r.Context(), actor.UserID)
+	}
 	if err != nil {
 		httputil.DomainError(w, err, h.log)
 		return
 	}
-	out := make([]dto.LessonResponse, 0, len(lessons))
-	for _, l := range lessons {
-		out = append(out, h.enricher.enrich(r.Context(), l, actor.UserID))
+
+	out := h.enricher.enrichMany(r.Context(), lessons, actor.UserID)
+
+	if !paged {
+		httputil.JSON(w, http.StatusOK, out)
+		return
 	}
-	httputil.JSON(w, http.StatusOK, out)
+
+	total, _ := h.svc.CountBookmarks(r.Context(), actor.UserID)
+	lastPage := 1
+	if perPage > 0 && total > 0 {
+		lastPage = (total + perPage - 1) / perPage
+	}
+
+	httputil.JSON(w, http.StatusOK, map[string]any{
+		"data": out,
+		"meta": map[string]int{
+			"page":      page,
+			"per_page":  perPage,
+			"total":     total,
+			"last_page": lastPage,
+		},
+	})
+}
+
+func (h *LessonHandler) CountBookmarks(w http.ResponseWriter, r *http.Request) {
+	actor, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	n, err := h.svc.CountBookmarks(r.Context(), actor.UserID)
+	if err != nil {
+		httputil.DomainError(w, err, h.log)
+		return
+	}
+	httputil.JSON(w, http.StatusOK, map[string]int{"count": n})
 }
 
 func (h *LessonHandler) ListMaterials(w http.ResponseWriter, r *http.Request) {
