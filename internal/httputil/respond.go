@@ -47,28 +47,21 @@ func Error(w http.ResponseWriter, status int, code, message string) {
 }
 
 func DomainError(w http.ResponseWriter, err error, log *slog.Logger) {
-	type mapping struct {
-		target error
-		status int
-		code   string
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		Error(w, http.StatusNotFound, "NOT_FOUND", err.Error())
+	case errors.Is(err, domain.ErrUnauthorized):
+		Error(w, http.StatusUnauthorized, "UNAUTHORIZED", err.Error())
+	case errors.Is(err, domain.ErrForbidden):
+		Error(w, http.StatusForbidden, "FORBIDDEN", err.Error())
+	case errors.Is(err, domain.ErrConflict):  
+		Error(w, http.StatusConflict, "CONFLICT", err.Error())
+	case errors.Is(err, domain.ErrInvalidInput):
+		Error(w, http.StatusBadRequest, "INVALID_INPUT", err.Error())
+	default:
+		log.Error("unhandled error", "error", err)
+		Error(w, http.StatusInternalServerError, "INTERNAL", "internal server error")
 	}
-	table := []mapping{
-		{domain.ErrInvalidInput, http.StatusBadRequest, "INVALID_INPUT"},
-		{domain.ErrUnauthorized, http.StatusUnauthorized, "UNAUTHORIZED"},
-		{domain.ErrForbidden, http.StatusForbidden, "FORBIDDEN"},
-		{domain.ErrNotFound, http.StatusNotFound, "NOT_FOUND"},
-		{domain.ErrConflict, http.StatusConflict, "CONFLICT"},
-	}
-
-	for _, m := range table {
-		if errors.Is(err, m.target) {
-			Error(w, m.status, m.code, err.Error())
-			return
-		}
-	}
-
-	log.Error("unhandled error", "error", err)
-	Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 }
 
 func DecodeJSON(r *http.Request, v any) error {

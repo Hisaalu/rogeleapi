@@ -51,6 +51,7 @@ type UserResponse struct {
 	IsSuspended        bool       `json:"is_suspended"`
 	EmailVerified      bool       `json:"email_verified"`
 	LastLogin          *time.Time `json:"last_login,omitempty"`
+	TrialStartDate     time.Time  `json:"trial_start_date"`
 	CreatedAt          time.Time  `json:"created_at"`
 	UpdatedAt          time.Time  `json:"updated_at"`
 }
@@ -81,6 +82,7 @@ func FromDomain(u *domain.User) UserResponse {
 		IsSuspended:        u.IsSuspended,
 		EmailVerified:      u.EmailVerified,
 		LastLogin:          u.LastLogin,
+		TrialStartDate:     u.TrialStartDate,
 		CreatedAt:          u.CreatedAt,
 		UpdatedAt:          u.UpdatedAt,
 	}

@@ -82,7 +82,7 @@ resources:
     read_roles: [admin]
     write_roles: [admin]
     columns:
-      email:          { type: string,  writable: false }
+      email:          { type: string,  writable: true }
       registration_number: { type: string, writable: true }
       first_name:     { type: string,  writable: true }
       last_name:      { type: string,  writable: true }

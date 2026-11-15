@@ -3,6 +3,7 @@ package dberr
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/lib/pq"
 
@@ -36,6 +37,13 @@ func Translate(err error) error {
 func humanReadable(pqErr *pq.Error) string {
 	switch pqErr.Code {
 	case "23505":
+		if pqErr.Constraint != "" {
+			field := constraintToField(pqErr.Constraint)
+			if field != "" {
+				return fmt.Sprintf("%s is already in use", field)
+			}
+			return "a record with these values already exists"
+		}
 		return "a record with these values already exists"
 	case "23503":
 		if pqErr.Constraint != "" {
@@ -50,4 +58,21 @@ func humanReadable(pqErr *pq.Error) string {
 		return "invalid value format"
 	}
 	return pqErr.Message
+}
+
+func constraintToField(constraint string) string {
+	name := constraint
+	if idx := strings.Index(name, "_"); idx != -1 {
+		name = name[idx+1:]
+	}
+	name = strings.TrimSuffix(name, "_key")
+	name = strings.TrimSuffix(name, "_unique")
+	if name == "" || name == constraint {
+		return ""
+	}
+	name = strings.ReplaceAll(name, "_", " ")
+	if len(name) > 0 {
+		name = strings.ToUpper(name[:1]) + name[1:]
+	}
+	return name
 }
