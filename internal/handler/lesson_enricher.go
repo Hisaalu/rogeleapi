@@ -18,6 +18,14 @@ func newLessonEnricher(db *sql.DB) *lessonEnricher {
 	return &lessonEnricher{db: db}
 }
 
+func finishRows(rows *sql.Rows) {
+	if rows == nil {
+		return
+	}
+	_ = rows.Err()
+	rows.Close()
+}
+
 func (e *lessonEnricher) enrich(ctx context.Context, l *domain.Lesson, viewerID int64) dto.LessonResponse {
 	out := e.enrichMany(ctx, []*domain.Lesson{l}, viewerID)
 	if len(out) == 0 {
@@ -91,7 +99,7 @@ func (e *lessonEnricher) enrichMany(
 					classNames[id] = name
 				}
 			}
-			rows.Close()
+			finishRows(rows)
 		}
 	}
 
@@ -108,7 +116,7 @@ func (e *lessonEnricher) enrichMany(
 					subjectNames[id] = name
 				}
 			}
-			rows.Close()
+			finishRows(rows)
 		}
 	}
 
@@ -129,7 +137,7 @@ func (e *lessonEnricher) enrichMany(
 					}
 				}
 			}
-			rows.Close()
+			finishRows(rows)
 		}
 	}
 
@@ -148,7 +156,7 @@ func (e *lessonEnricher) enrichMany(
 					materialCounts[id] = cnt
 				}
 			}
-			rows.Close()
+			finishRows(rows)
 		}
 	}
 
@@ -165,7 +173,7 @@ func (e *lessonEnricher) enrichMany(
 					bookmarkedSet[id] = true
 				}
 			}
-			rows.Close()
+			finishRows(rows)
 		}
 	}
 

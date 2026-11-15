@@ -46,18 +46,20 @@ type CreateSubmissionFileRequest struct {
 }
 
 type HomeworkResponse struct {
-	ID               int64     `json:"id"`
-	Title            string    `json:"title"`
-	Description      *string   `json:"description,omitempty"`
-	ClassID          int64     `json:"class_id"`
-	ClassName        *string   `json:"class_name,omitempty"`
-	SubjectID        int64     `json:"subject_id"`
-	SubjectName      *string   `json:"subject_name,omitempty"`
-	TeacherID        int64     `json:"teacher_id"`
-	DueDate          time.Time `json:"due_date"`
-	IsActive         bool      `json:"is_active"`
-	SubmissionsCount int       `json:"submissions_count"`
-	CreatedAt        time.Time `json:"created_at"`
+	ID                  int64     `json:"id"`
+	Title               string    `json:"title"`
+	Description         *string   `json:"description,omitempty"`
+	ClassID             int64     `json:"class_id"`
+	ClassName           *string   `json:"class_name,omitempty"`
+	SubjectID           int64     `json:"subject_id"`
+	SubjectName         *string   `json:"subject_name,omitempty"`
+	TeacherID           int64     `json:"teacher_id"`
+	TeacherName         *string   `json:"teacher_name,omitempty"`
+	TeacherProfilePhoto *string   `json:"teacher_profile_photo,omitempty"` // ADDED
+	DueDate             time.Time `json:"due_date"`
+	IsActive            bool      `json:"is_active"`
+	SubmissionsCount    int       `json:"submissions_count"`
+	CreatedAt           time.Time `json:"created_at"`
 }
 
 type AttachmentResponse struct {
@@ -69,18 +71,19 @@ type AttachmentResponse struct {
 }
 
 type SubmissionResponse struct {
-	ID               int64                    `json:"id"`
-	HomeworkID       int64                    `json:"homework_id"`
-	StudentID        int64                    `json:"student_id"`
-	StudentFirstName *string                  `json:"student_first_name,omitempty"`
-	StudentLastName  *string                  `json:"student_last_name,omitempty"`
-	StudentEmail     *string                  `json:"student_email,omitempty"`
-	TextAnswer       *string                  `json:"text_answer,omitempty"`
-	Grade            *float64                 `json:"grade,omitempty"`
-	Feedback         *string                  `json:"feedback,omitempty"`
-	Status           string                   `json:"status"`
-	SubmittedAt      *time.Time               `json:"submitted_at,omitempty"`
-	Files            []SubmissionFileResponse `json:"files,omitempty"`
+	ID                  int64                    `json:"id"`
+	HomeworkID          int64                    `json:"homework_id"`
+	StudentID           int64                    `json:"student_id"`
+	StudentFirstName    *string                  `json:"student_first_name,omitempty"`
+	StudentLastName     *string                  `json:"student_last_name,omitempty"`
+	StudentEmail        *string                  `json:"student_email,omitempty"`
+	StudentProfilePhoto *string                  `json:"student_profile_photo,omitempty"` // ADDED
+	TextAnswer          *string                  `json:"text_answer,omitempty"`
+	Grade               *float64                 `json:"grade,omitempty"`
+	Feedback            *string                  `json:"feedback,omitempty"`
+	Status              string                   `json:"status"`
+	SubmittedAt         *time.Time               `json:"submitted_at,omitempty"`
+	Files               []SubmissionFileResponse `json:"files,omitempty"`
 }
 
 type SubmissionFileResponse struct {
@@ -88,7 +91,7 @@ type SubmissionFileResponse struct {
 	SubmissionID int64  `json:"submission_id"`
 	FileName     string `json:"file_name"`
 	FilePath     string `json:"file_path"`
-	FileSize     *int   `json:"file_size,omitempty"` 
+	FileSize     *int   `json:"file_size,omitempty"`
 }
 
 func HomeworkFromDomain(hw *domain.Homework) HomeworkResponse {
@@ -133,17 +136,18 @@ func AttachmentsFromDomain(as []*domain.HomeworkAttachment) []AttachmentResponse
 
 func SubmissionFromDomain(s *domain.HomeworkSubmission, files []*domain.HomeworkSubmissionFile) SubmissionResponse {
 	res := SubmissionResponse{
-		ID:               s.ID,
-		HomeworkID:       s.HomeworkID,
-		StudentID:        s.StudentID,
-		StudentFirstName: s.StudentFirstName,
-		StudentLastName:  s.StudentLastName,
-		StudentEmail:     s.StudentEmail,
-		TextAnswer:       s.TextAnswer,
-		Grade:            s.Grade,
-		Feedback:         s.Feedback,
-		Status:           string(s.Status),
-		SubmittedAt:      s.SubmittedAt,
+		ID:                  s.ID,
+		HomeworkID:          s.HomeworkID,
+		StudentID:           s.StudentID,
+		StudentFirstName:    s.StudentFirstName,
+		StudentLastName:     s.StudentLastName,
+		StudentEmail:        s.StudentEmail,
+		StudentProfilePhoto: s.StudentProfilePhoto,
+		TextAnswer:          s.TextAnswer,
+		Grade:               s.Grade,
+		Feedback:            s.Feedback,
+		Status:              string(s.Status),
+		SubmittedAt:         s.SubmittedAt,
 	}
 
 	if len(files) > 0 {

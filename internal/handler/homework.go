@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -48,8 +49,10 @@ func (h *HomeworkHandler) enrichHomeworks(ctx context.Context, hws []*domain.Hom
 	classIDs := make([]int64, 0, len(hws))
 	subjectIDs := make([]int64, 0, len(hws))
 	homeworkIDs := make([]int64, 0, len(hws))
+	teacherIDs := make([]int64, 0, len(hws))
 	seenClass := map[int64]bool{}
 	seenSubject := map[int64]bool{}
+	seenTeacher := map[int64]bool{}
 
 	for _, hw := range hws {
 		if !seenClass[hw.ClassID] {
@@ -60,12 +63,18 @@ func (h *HomeworkHandler) enrichHomeworks(ctx context.Context, hws []*domain.Hom
 			seenSubject[hw.SubjectID] = true
 			subjectIDs = append(subjectIDs, hw.SubjectID)
 		}
+		if hw.TeacherID > 0 && !seenTeacher[hw.TeacherID] {
+			seenTeacher[hw.TeacherID] = true
+			teacherIDs = append(teacherIDs, hw.TeacherID)
+		}
 		homeworkIDs = append(homeworkIDs, hw.ID)
 	}
 
 	classNames := map[int64]string{}
 	subjectNames := map[int64]string{}
 	submissionCounts := map[int64]int{}
+	teacherNames := map[int64]string{}
+	teacherPhotos := map[int64]string{}
 
 	if h.db != nil {
 		if rows, err := h.db.QueryContext(ctx,
@@ -96,6 +105,30 @@ func (h *HomeworkHandler) enrichHomeworks(ctx context.Context, hws []*domain.Hom
 			closeRows(rows, h.log)
 		}
 
+		if len(teacherIDs) > 0 {
+			if rows, err := h.db.QueryContext(ctx,
+				`SELECT id, COALESCE(first_name,''), COALESCE(last_name,''), profile_photo 
+				 FROM users WHERE id = ANY($1)`,
+				pq.Array(teacherIDs),
+			); err == nil {
+				for rows.Next() {
+					var id int64
+					var first, last string
+					var photo sql.NullString
+					if rows.Scan(&id, &first, &last, &photo) == nil {
+						name := strings.TrimSpace(first + " " + last)
+						if name != "" {
+							teacherNames[id] = name
+						}
+						if photo.Valid {
+							teacherPhotos[id] = photo.String
+						}
+					}
+				}
+				closeRows(rows, h.log)
+			}
+		}
+
 		if rows, err := h.db.QueryContext(ctx,
 			`SELECT homework_id, COUNT(*)::int FROM homework_submissions WHERE homework_id = ANY($1) GROUP BY homework_id`,
 			pq.Array(homeworkIDs),
@@ -120,6 +153,12 @@ func (h *HomeworkHandler) enrichHomeworks(ctx context.Context, hws []*domain.Hom
 		if name, ok := subjectNames[hw.SubjectID]; ok {
 			res.SubjectName = &name
 		}
+		if name, ok := teacherNames[hw.TeacherID]; ok {
+			res.TeacherName = &name
+		}
+		if photo, ok := teacherPhotos[hw.TeacherID]; ok {
+			res.TeacherProfilePhoto = &photo
+		}
 		res.SubmissionsCount = submissionCounts[hw.ID]
 		out = append(out, res)
 	}
@@ -128,13 +167,21 @@ func (h *HomeworkHandler) enrichHomeworks(ctx context.Context, hws []*domain.Hom
 
 func (h *HomeworkHandler) List(w http.ResponseWriter, r *http.Request) {
 	actor, ok := h.actor(w, r)
-	if !ok { return }
+	if !ok {
+		return
+	}
 
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
-	if perPage < 1 { perPage = 20 }
-	if perPage > 100 { perPage = 100 }
-	if page < 1 { page = 1 }
+	if perPage < 1 {
+		perPage = 20
+	}
+	if perPage > 100 {
+		perPage = 100
+	}
+	if page < 1 {
+		page = 1
+	}
 
 	f := repository.HomeworkFilter{
 		Search: r.URL.Query().Get("q"),
@@ -143,10 +190,14 @@ func (h *HomeworkHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if v := r.URL.Query().Get("class_id"); v != "" {
-		if id, err := strconv.ParseInt(v, 10, 64); err == nil { f.ClassID = &id }
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			f.ClassID = &id
+		}
 	}
 	if v := r.URL.Query().Get("subject_id"); v != "" {
-		if id, err := strconv.ParseInt(v, 10, 64); err == nil { f.SubjectID = &id }
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			f.SubjectID = &id
+		}
 	}
 
 	homeworks, total, err := h.svc.List(r.Context(), actor, f)
@@ -365,14 +416,18 @@ func (h *HomeworkHandler) DeleteAttachment(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *HomeworkHandler) batchSubmissionFiles(ctx context.Context, subIDs []int64) map[int64][]*domain.HomeworkSubmissionFile {
-	if len(subIDs) == 0 { return nil }
-	
+	if len(subIDs) == 0 {
+		return nil
+	}
+
 	rows, err := h.db.QueryContext(ctx, `
 		SELECT id, submission_id, file_name, file_path, file_size 
 		FROM homework_submission_files 
 		WHERE submission_id = ANY($1)
 	`, pq.Array(subIDs))
-	if err != nil { return nil }
+	if err != nil {
+		return nil
+	}
 	defer rows.Close()
 
 	res := make(map[int64][]*domain.HomeworkSubmissionFile)
@@ -382,14 +437,21 @@ func (h *HomeworkHandler) batchSubmissionFiles(ctx context.Context, subIDs []int
 			res[f.SubmissionID] = append(res[f.SubmissionID], &f)
 		}
 	}
+
+	if err := rows.Err(); err != nil {
+		h.log.Warn("failed to iterate submission files", "error", err)
+	}
+
 	return res
 }
 
 func (h *HomeworkHandler) ListSubmissions(w http.ResponseWriter, r *http.Request) {
 	actor, ok := h.actor(w, r)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	
+
 	submissions, err := h.svc.ListSubmissions(r.Context(), id, actor)
 	if err != nil {
 		httputil.DomainError(w, err, h.log)
@@ -397,7 +459,9 @@ func (h *HomeworkHandler) ListSubmissions(w http.ResponseWriter, r *http.Request
 	}
 
 	subIDs := make([]int64, len(submissions))
-	for i, s := range submissions { subIDs[i] = s.ID }
+	for i, s := range submissions {
+		subIDs[i] = s.ID
+	}
 	filesMap := h.batchSubmissionFiles(r.Context(), subIDs)
 
 	httputil.JSON(w, http.StatusOK, dto.SubmissionsFromDomain(submissions, filesMap))
@@ -405,7 +469,9 @@ func (h *HomeworkHandler) ListSubmissions(w http.ResponseWriter, r *http.Request
 
 func (h *HomeworkHandler) MySubmissions(w http.ResponseWriter, r *http.Request) {
 	actor, ok := h.actor(w, r)
-	if !ok { return }
+	if !ok {
+		return
+	}
 
 	submissions, err := h.svc.ListMySubmissions(r.Context(), actor)
 	if err != nil {
@@ -414,7 +480,9 @@ func (h *HomeworkHandler) MySubmissions(w http.ResponseWriter, r *http.Request) 
 	}
 
 	subIDs := make([]int64, len(submissions))
-	for i, s := range submissions { subIDs[i] = s.ID }
+	for i, s := range submissions {
+		subIDs[i] = s.ID
+	}
 	filesMap := h.batchSubmissionFiles(r.Context(), subIDs)
 
 	httputil.JSON(w, http.StatusOK, dto.SubmissionsFromDomain(submissions, filesMap))

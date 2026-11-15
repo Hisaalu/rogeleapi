@@ -173,7 +173,7 @@ func (r *HomeworkRepo) List(ctx context.Context, f repository.HomeworkFilter) ([
 		if len(where) > 0 {
 			cq += " WHERE " + strings.Join(where, " AND ")
 		}
-		countArgs := args[:len(args)-(btoi(f.Limit>0)+btoi(f.Offset>0))]
+		countArgs := args[:len(args)-(btoi(f.Limit > 0)+btoi(f.Offset > 0))]
 		_ = r.db.QueryRowContext(ctx, cq, countArgs...).Scan(&total)
 	}
 
@@ -181,7 +181,9 @@ func (r *HomeworkRepo) List(ctx context.Context, f repository.HomeworkFilter) ([
 }
 
 func btoi(b bool) int {
-	if b { return 1 }
+	if b {
+		return 1
+	}
 	return 0
 }
 
@@ -320,7 +322,7 @@ func (r *HomeworkRepo) ListSubmissions(ctx context.Context, homeworkID int64) ([
 			s.id, s.homework_id, s.student_id,
 			s.text_answer, s.grade, s.feedback, s.status,
 			s.submitted_at, s.graded_at, s.created_at, s.updated_at,
-			u.first_name, u.last_name, u.email
+			u.first_name, u.last_name, u.email, u.profile_photo
 		FROM homework_submissions s
 		LEFT JOIN users u ON u.id = s.student_id
 		WHERE s.homework_id = $1
@@ -335,22 +337,23 @@ func (r *HomeworkRepo) ListSubmissions(ctx context.Context, homeworkID int64) ([
 	results := make([]*domain.HomeworkSubmission, 0, 16)
 	for rows.Next() {
 		var (
-			s         domain.HomeworkSubmission
-			textAnswer sql.NullString
-			grade      sql.NullFloat64
-			feedback   sql.NullString
-			submitted  sql.NullTime
-			graded     sql.NullTime
-			updated    sql.NullTime
-			firstName  sql.NullString
-			lastName   sql.NullString
-			email      sql.NullString
+			s            domain.HomeworkSubmission
+			textAnswer   sql.NullString
+			grade        sql.NullFloat64
+			feedback     sql.NullString
+			submitted    sql.NullTime
+			graded       sql.NullTime
+			updated      sql.NullTime
+			firstName    sql.NullString
+			lastName     sql.NullString
+			email        sql.NullString
+			profilePhoto sql.NullString
 		)
 		if err := rows.Scan(
 			&s.ID, &s.HomeworkID, &s.StudentID,
 			&textAnswer, &grade, &feedback, &s.Status,
 			&submitted, &graded, &s.CreatedAt, &updated,
-			&firstName, &lastName, &email,
+			&firstName, &lastName, &email, &profilePhoto,
 		); err != nil {
 			return nil, err
 		}
@@ -380,6 +383,9 @@ func (r *HomeworkRepo) ListSubmissions(ctx context.Context, homeworkID int64) ([
 		}
 		if email.Valid {
 			s.StudentEmail = &email.String
+		}
+		if profilePhoto.Valid {
+			s.StudentProfilePhoto = &profilePhoto.String
 		}
 		results = append(results, &s)
 	}
