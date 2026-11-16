@@ -55,7 +55,7 @@ type LessonRepository interface {
 	Update(ctx context.Context, l *domain.Lesson) error
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context, f LessonFilter) ([]*domain.Lesson, error)
-		ListWithTotal(ctx context.Context, f LessonFilter) (LessonListResult, error)
+	ListWithTotal(ctx context.Context, f LessonFilter) (LessonListResult, error)
 	IncrementViews(ctx context.Context, id int64) error
 
 	ListMaterials(ctx context.Context, lessonID int64) ([]*domain.LessonMaterial, error)
@@ -68,7 +68,7 @@ type LessonRepository interface {
 	RemoveBookmark(ctx context.Context, userID, lessonID int64) error
 	ListBookmarks(ctx context.Context, userID int64) ([]*domain.Lesson, error)
 	ListBookmarksPaged(ctx context.Context, userID int64, limit, offset int) ([]*domain.Lesson, error)
-	CountBookmarks(ctx context.Context, userID int64) (int, error) 
+	CountBookmarks(ctx context.Context, userID int64) (int, error)
 
 	Count(ctx context.Context, f LessonFilter) (int, error)
 }
@@ -88,10 +88,10 @@ type HomeworkRepository interface {
 	GetByID(ctx context.Context, id int64) (*domain.Homework, error)
 	Update(ctx context.Context, hw *domain.Homework) error
 	Delete(ctx context.Context, id int64) error
-	List(ctx context.Context, f HomeworkFilter) ([]*domain.Homework, int, error) 
+	List(ctx context.Context, f HomeworkFilter) ([]*domain.Homework, int, error)
 
 	ListAttachments(ctx context.Context, homeworkID int64) ([]*domain.HomeworkAttachment, error)
-	GetAttachmentByID(ctx context.Context, id int64) (*domain.HomeworkAttachment, error) 
+	GetAttachmentByID(ctx context.Context, id int64) (*domain.HomeworkAttachment, error)
 	CreateAttachment(ctx context.Context, a *domain.HomeworkAttachment) (*domain.HomeworkAttachment, error)
 	DeleteAttachment(ctx context.Context, id int64) error
 

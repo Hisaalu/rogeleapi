@@ -126,7 +126,7 @@ func (r *HomeworkRepo) List(ctx context.Context, f repository.HomeworkFilter) ([
 	if len(where) > 0 {
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
-	query += " ORDER BY due_date DESC"
+	query += " ORDER BY COALESCE(updated_at, created_at) DESC"
 
 	if f.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT $%d", i)
