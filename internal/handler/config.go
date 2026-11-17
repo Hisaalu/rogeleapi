@@ -101,3 +101,46 @@ func (h *ConfigHandler) PublicClasses(w http.ResponseWriter, r *http.Request) {
 
 	httputil.JSON(w, http.StatusOK, classes)
 }
+
+func (h *ConfigHandler) PublicPlans(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.db.QueryContext(r.Context(), `
+		SELECT id, name, description, price, duration_days, is_active
+		FROM subscription_plans
+		WHERE is_active = true
+		ORDER BY price ASC
+	`)
+	if err != nil {
+		h.log.Error("query plans", "error", err)
+		httputil.Error(w, http.StatusInternalServerError, "DB_ERROR", "could not fetch plans")
+		return
+	}
+	defer rows.Close()
+
+	type Plan struct {
+		ID           int64   `json:"id"`
+		Name         string  `json:"name"`
+		Description  *string `json:"description,omitempty"`
+		Price        float64 `json:"price"`
+		DurationDays int     `json:"duration_days"`
+		IsActive     bool    `json:"is_active"`
+	}
+
+	plans := make([]Plan, 0)
+	for rows.Next() {
+		var p Plan
+		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Price, &p.DurationDays, &p.IsActive); err != nil {
+			h.log.Error("scan plan", "error", err)
+			httputil.Error(w, http.StatusInternalServerError, "SCAN_ERROR", "could not parse plans")
+			return
+		}
+		plans = append(plans, p)
+	}
+	if err := rows.Err(); err != nil {
+		h.log.Error("iterate plans", "error", err)
+		httputil.Error(w, http.StatusInternalServerError, "DB_ERROR", "could not read plans")
+		return
+	}
+
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	httputil.JSON(w, http.StatusOK, plans)
+}
