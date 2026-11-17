@@ -31,6 +31,7 @@ type SubscriptionService struct {
 type planLookup interface {
 	GetPlan(ctx context.Context, id int64) (*domain.SubscriptionPlan, error)
 	GetFreePlan(ctx context.Context) (*domain.SubscriptionPlan, error)
+	FindPlanByName(ctx context.Context, name string) (*domain.SubscriptionPlan, error)
 }
 
 func NewSubscriptionService(
@@ -123,7 +124,7 @@ func (s *SubscriptionService) GetMyTrial(ctx context.Context, actor ActorContext
 				durationDays = parsed
 			}
 		}
-		
+
 		resetDate, _ = s.settings.GetSettingUpdatedAt(ctx, "trial.duration_days")
 	}
 
@@ -229,8 +230,8 @@ func (s *SubscriptionService) MarkConverted(ctx context.Context, userID int64) e
 }
 
 func (s *SubscriptionService) CountAll(ctx context.Context, actor ActorContext, f repository.SubscriptionFilter) (int, error) {
-    if actor.Role != domain.RoleAdmin {
-        return 0, fmt.Errorf("%w: admin only", domain.ErrForbidden)
-    }
-    return s.subs.CountWithUsers(ctx, f)
+	if actor.Role != domain.RoleAdmin {
+		return 0, fmt.Errorf("%w: admin only", domain.ErrForbidden)
+	}
+	return s.subs.CountWithUsers(ctx, f)
 }

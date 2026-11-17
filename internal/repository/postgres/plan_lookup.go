@@ -73,3 +73,30 @@ func (r *PlanRepo) GetFreePlan(ctx context.Context) (*domain.SubscriptionPlan, e
 	}
 	return &p, nil
 }
+
+func (r *PlanRepo) FindPlanByName(ctx context.Context, name string) (*domain.SubscriptionPlan, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, name, description, price, duration_days, is_active, created_at, updated_at
+		FROM subscription_plans WHERE LOWER(name) = LOWER($1) LIMIT 1
+	`, name)
+
+	var (
+		p       domain.SubscriptionPlan
+		desc    sql.NullString
+		updated sql.NullTime
+	)
+	err := row.Scan(&p.ID, &p.Name, &desc, &p.Price, &p.DurationDays, &p.IsActive, &p.CreatedAt, &updated)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if desc.Valid {
+		p.Description = &desc.String
+	}
+	if updated.Valid {
+		p.UpdatedAt = &updated.Time
+	}
+	return &p, nil
+}

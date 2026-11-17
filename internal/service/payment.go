@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -83,29 +84,9 @@ func (s *PaymentService) Initiate(ctx context.Context, actor ActorContext, in In
 		return nil, fmt.Errorf("%w: plan is not active", domain.ErrInvalidInput)
 	}
 
-	amountToPay := plan.Price
-
-	if currentSub, err := s.subscriptions.GetMyActive(ctx, actor); err == nil && currentSub != nil {
-		now := time.Now()
-		if currentSub.EndDate.After(now) {
-			currentPlanID, _ := strconv.ParseInt(string(currentSub.PlanType), 10, 64)
-			currentPlan, err := s.plans.GetPlan(ctx, currentPlanID)
-
-			if err == nil && currentPlan != nil {
-				if plan.Price > currentPlan.Price {
-					daysLeft := currentSub.EndDate.Sub(now).Hours() / 24
-					if daysLeft > float64(currentPlan.DurationDays) {
-						daysLeft = float64(currentPlan.DurationDays)
-					}
-					dailyRate := currentPlan.Price / float64(currentPlan.DurationDays)
-					credit := dailyRate * daysLeft
-					amountToPay = plan.Price - credit
-					if amountToPay < 0 {
-						amountToPay = 0
-					}
-				}
-			}
-		}
+	amountToPay, err := s.calculateProratedAmount(ctx, actor, plan)
+	if err != nil {
+		return nil, err
 	}
 
 	uid := actor.UserID
@@ -434,35 +415,69 @@ func extractStatus(payload map[string]any) string {
 	return ""
 }
 
-func (s *PaymentService) calculateProratedAmount(ctx context.Context, actor ActorContext, plan *domain.SubscriptionPlan) float64 {
+func (s *PaymentService) calculateProratedAmount(
+	ctx context.Context,
+	actor ActorContext,
+	plan *domain.SubscriptionPlan,
+) (float64, error) {
 	amountToPay := plan.Price
 
-	if currentSub, err := s.subscriptions.GetMyActive(ctx, actor); err == nil && currentSub != nil {
-		now := time.Now()
-		if currentSub.EndDate.After(now) {
-			currentPlanID, _ := strconv.ParseInt(string(currentSub.PlanType), 10, 64)
-			currentPlan, err := s.plans.GetPlan(ctx, currentPlanID)
-
-			if err == nil && currentPlan != nil {
-				if plan.Price > currentPlan.Price {
-					daysLeft := currentSub.EndDate.Sub(now).Hours() / 24
-					if daysLeft > float64(currentPlan.DurationDays) {
-						daysLeft = float64(currentPlan.DurationDays)
-					}
-					dailyRate := currentPlan.Price / float64(currentPlan.DurationDays)
-					credit := dailyRate * daysLeft
-					amountToPay = plan.Price - credit
-					if amountToPay < 0 {
-						amountToPay = 0
-					}
-				}
-			}
+	currentSub, err := s.subscriptions.GetMyActive(ctx, actor)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return amountToPay, nil // no active subscription → full price
 		}
+		return 0, err
 	}
-	return amountToPay
+	if currentSub == nil {
+		return amountToPay, nil
+	}
+
+	now := time.Now()
+	if !currentSub.EndDate.After(now) {
+		return amountToPay, nil // subscription already expired → full price
+	}
+
+	// currentSub.PlanType is a string enum ("monthly" / "termly" / "yearly").
+	// Look the plan up by name, not by parsing it as an int.
+	currentPlan, err := s.plans.FindPlanByName(ctx, string(currentSub.PlanType))
+	if err != nil || currentPlan == nil {
+		// Can't find the current plan. Fall back to full price rather than
+		// failing the whole flow.
+		s.log.Warn("proration: could not resolve current plan",
+			"plan_type", currentSub.PlanType, "error", err)
+		return amountToPay, nil
+	}
+
+	// Only prorate when upgrading to a more expensive plan.
+	if plan.Price <= currentPlan.Price {
+		return amountToPay, nil
+	}
+
+	daysLeft := currentSub.EndDate.Sub(now).Hours() / 24
+	if daysLeft > float64(currentPlan.DurationDays) {
+		daysLeft = float64(currentPlan.DurationDays)
+	}
+	if daysLeft < 0 {
+		daysLeft = 0
+	}
+
+	dailyRate := currentPlan.Price / float64(currentPlan.DurationDays)
+	credit := dailyRate * daysLeft
+
+	amountToPay = plan.Price - credit
+	if amountToPay < 0 {
+		amountToPay = 0
+	}
+
+	return amountToPay, nil
 }
 
-func (s *PaymentService) PreviewPayment(ctx context.Context, actor ActorContext, planID int64) (float64, error) {
+func (s *PaymentService) PreviewPayment(
+	ctx context.Context,
+	actor ActorContext,
+	planID int64,
+) (float64, error) {
 	plan, err := s.plans.GetPlan(ctx, planID)
 	if err != nil {
 		return 0, err
@@ -470,7 +485,7 @@ func (s *PaymentService) PreviewPayment(ctx context.Context, actor ActorContext,
 	if !plan.IsActive {
 		return 0, fmt.Errorf("%w: plan is not active", domain.ErrInvalidInput)
 	}
-	return s.calculateProratedAmount(ctx, actor, plan), nil
+	return s.calculateProratedAmount(ctx, actor, plan)
 }
 
 func (s *PaymentService) CountAll(ctx context.Context, actor ActorContext, f repository.PaymentFilter) (int, error) {
