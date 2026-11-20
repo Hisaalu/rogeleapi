@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"math"
 
 	"github.com/Hisaalu/rogele/internal/domain"
 	"github.com/Hisaalu/rogele/internal/mailer"
@@ -282,6 +283,38 @@ func (s *PaymentService) applyProviderStatus(
 	return nil
 }
 
+func formatUGX(amount float64) string {
+	rounded := int64(math.Round(amount))
+	neg := rounded < 0
+	if neg {
+		rounded = -rounded
+	}
+
+	s := strconv.FormatInt(rounded, 10)
+	if len(s) <= 3 {
+		if neg {
+			return "-" + s
+		}
+		return s
+	}
+
+	var out []byte
+	rem := len(s) % 3
+	if rem > 0 {
+		out = append(out, s[:rem]...)
+	}
+	for i := rem; i < len(s); i += 3 {
+		if len(out) > 0 {
+			out = append(out, ',')
+		}
+		out = append(out, s[i:i+3]...)
+	}
+	if neg {
+		return "-" + string(out)
+	}
+	return string(out)
+}
+
 func (s *PaymentService) notifyPaymentStatus(ctx context.Context, p *domain.Payment, status domain.PaymentStatus) {
 	if s.notifications == nil || p.UserID == nil {
 		return
@@ -292,12 +325,12 @@ func (s *PaymentService) notifyPaymentStatus(ctx context.Context, p *domain.Paym
 	var title, message string
 	switch status {
 	case domain.PaymentCompleted:
-		title = "Payment received"
-		amount := 0.0
-		if p.Amount != nil {
-			amount = *p.Amount
-		}
-		message = fmt.Sprintf("Your payment of UGX %.2f was successful.", amount)
+	title = "Payment received"
+	amount := 0.0
+	if p.Amount != nil {
+		amount = *p.Amount
+	}
+	message = fmt.Sprintf("Your payment of UGX %s was successful.", formatUGX(amount))
 	case domain.PaymentFailed:
 		title = "Payment failed"
 		message = "Your recent payment did not go through. Please try again."
@@ -335,9 +368,9 @@ func (s *PaymentService) sendPaymentConfirmation(ctx context.Context, p *domain.
 		}
 	}
 
-	amount := "0.00"
+	amount := formatUGX(0)
 	if p.Amount != nil {
-		amount = fmt.Sprintf("%.2f", *p.Amount)
+		amount = formatUGX(*p.Amount)
 	}
 
 	method := "unknown"
