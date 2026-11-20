@@ -6,8 +6,8 @@ import (
 )
 
 var (
-	ErrProviderNotConfigured = errors.New("payment provider is not configured")
-	ErrProviderRejected      = errors.New("payment provider rejected the request")
+	ErrProviderNotConfigured = errors.New("not configured!")
+	ErrProviderRejected      = errors.New("rejected request!")
 )
 
 type InitiateRequest struct {

@@ -66,7 +66,7 @@ func NewPaymentService(
 
 func (s *PaymentService) Initiate(ctx context.Context, actor ActorContext, in InitiatePaymentInput) (*InitiatePaymentResult, error) {
 	if in.PhoneNumber == "" {
-		return nil, fmt.Errorf("%w: phone number is required", domain.ErrInvalidInput)
+		return nil, fmt.Errorf("%w: phone number required!", domain.ErrInvalidInput)
 	}
 	method := strings.ToLower(strings.TrimSpace(in.Method))
 	provider, err := s.providers.Get(method)
@@ -74,7 +74,7 @@ func (s *PaymentService) Initiate(ctx context.Context, actor ActorContext, in In
 		return nil, fmt.Errorf("%w: %s", domain.ErrInvalidInput, err.Error())
 	}
 	if !provider.Enabled() {
-		return nil, fmt.Errorf("%w: %s payment provider is not configured", domain.ErrInvalidInput, method)
+		return nil, fmt.Errorf("%w: %s not configured!", domain.ErrInvalidInput, method)
 	}
 
 	plan, err := s.plans.GetPlan(ctx, in.PlanID)
@@ -82,7 +82,7 @@ func (s *PaymentService) Initiate(ctx context.Context, actor ActorContext, in In
 		return nil, err
 	}
 	if !plan.IsActive {
-		return nil, fmt.Errorf("%w: plan is not active", domain.ErrInvalidInput)
+		return nil, fmt.Errorf("%w: plan is not active!", domain.ErrInvalidInput)
 	}
 
 	amountToPay, err := s.calculateProratedAmount(ctx, actor, plan)
