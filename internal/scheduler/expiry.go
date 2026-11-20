@@ -101,6 +101,10 @@ func (s *ExpiryScheduler) sendSubscriptionReminders(ctx context.Context) {
 		}
 		items = append(items, it)
 	}
+	if err := rows.Err(); err != nil {
+		s.log.Error("subscription reminder rows", "error", err)
+		return
+	}
 
 	for _, it := range items {
 		daysLeft := int(time.Until(it.endDate).Hours() / 24)
@@ -180,6 +184,10 @@ func (s *ExpiryScheduler) sendTrialReminders(ctx context.Context) {
 			continue
 		}
 		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		s.log.Error("trial reminder rows", "error", err)
+		return
 	}
 
 	for _, it := range items {
@@ -272,6 +280,10 @@ func (s *ExpiryScheduler) expireQuizzes(ctx context.Context) {
 			expired = append(expired, e)
 		}
 	}
+	if err := rows.Err(); err != nil {
+		s.log.Error("quiz expiry rows failed", "error", err)
+		return
+	}
 
 	for _, e := range expired {
 		s.autoSubmitAttempt(ctx, e.AttemptID, e.QuizID)
@@ -279,7 +291,11 @@ func (s *ExpiryScheduler) expireQuizzes(ctx context.Context) {
 }
 
 func (s *ExpiryScheduler) autoSubmitAttempt(ctx context.Context, attemptID, quizID int64) {
-	qRows, _ := s.db.QueryContext(ctx, `SELECT id, correct_answer FROM quiz_questions WHERE quiz_id = $1`, quizID)
+	qRows, err := s.db.QueryContext(ctx, `SELECT id, correct_answer FROM quiz_questions WHERE quiz_id = $1`, quizID)
+	if err != nil {
+		s.log.Error("quiz questions query failed", "quiz_id", quizID, "error", err)
+		return
+	}
 	defer qRows.Close()
 
 	type qData struct {
@@ -293,8 +309,16 @@ func (s *ExpiryScheduler) autoSubmitAttempt(ctx context.Context, attemptID, quiz
 			questions = append(questions, q)
 		}
 	}
+	if err := qRows.Err(); err != nil {
+		s.log.Error("quiz questions rows failed", "quiz_id", quizID, "error", err)
+		return
+	}
 
-	aRows, _ := s.db.QueryContext(ctx, `SELECT question_id, selected_answer FROM quiz_attempt_answers WHERE attempt_id = $1`, attemptID)
+	aRows, err := s.db.QueryContext(ctx, `SELECT question_id, selected_answer FROM quiz_attempt_answers WHERE attempt_id = $1`, attemptID)
+	if err != nil {
+		s.log.Error("quiz answers query failed", "attempt_id", attemptID, "error", err)
+		return
+	}
 	defer aRows.Close()
 
 	saved := make(map[int64]int)
@@ -305,16 +329,24 @@ func (s *ExpiryScheduler) autoSubmitAttempt(ctx context.Context, attemptID, quiz
 			saved[qID] = int(sel.Int64)
 		}
 	}
+	if err := aRows.Err(); err != nil {
+		s.log.Error("quiz answers rows failed", "attempt_id", attemptID, "error", err)
+		return
+	}
 
 	correctCount := 0
 	for _, q := range questions {
 		if ans, ok := saved[q.ID]; ok && q.Correct.Valid {
 			letter := ""
 			switch ans {
-			case 0: letter = "A"
-			case 1: letter = "B"
-			case 2: letter = "C"
-			case 3: letter = "D"
+			case 0:
+				letter = "A"
+			case 1:
+				letter = "B"
+			case 2:
+				letter = "C"
+			case 3:
+				letter = "D"
 			}
 			if letter == q.Correct.String {
 				correctCount++
@@ -328,7 +360,7 @@ func (s *ExpiryScheduler) autoSubmitAttempt(ctx context.Context, attemptID, quiz
 		score = (correctCount * 100) / total
 	}
 
-	_, err := s.db.ExecContext(ctx, `
+	_, err = s.db.ExecContext(ctx, `
 		UPDATE quiz_attempts 
 		SET status = 'expired', score = $1, total_questions = $2, correct_answers = $3, completed_at = NOW() 
 		WHERE id = $4

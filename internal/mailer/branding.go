@@ -84,6 +84,9 @@ func (p *BrandingProvider) load(ctx context.Context) Branding {
 			values[key] = value.String
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return b
+	}
 
 	if v := values["branding.school_name"]; v != "" {
 		b.SchoolName = v
