@@ -199,6 +199,9 @@ func (h *HomeworkHandler) List(w http.ResponseWriter, r *http.Request) {
 			f.SubjectID = &id
 		}
 	}
+	if v := r.URL.Query().Get("status"); v != "" && v != "all" {
+		f.StatusFilter = &v
+	}
 
 	homeworks, total, err := h.svc.List(r.Context(), actor, f)
 	if err != nil {

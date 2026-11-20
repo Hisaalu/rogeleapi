@@ -135,6 +135,8 @@ func (s *HomeworkService) List(ctx context.Context, actor ActorContext, f reposi
 		f.ClassID = classID
 		active := true
 		f.IsActive = &active
+		sid := actor.UserID
+		f.StudentID = &sid
 	default:
 		return nil, 0, domain.ErrForbidden
 	}

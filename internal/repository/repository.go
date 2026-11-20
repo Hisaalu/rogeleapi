@@ -74,13 +74,15 @@ type LessonRepository interface {
 }
 
 type HomeworkFilter struct {
-	TeacherID *int64
-	ClassID   *int64
-	SubjectID *int64
-	IsActive  *bool
-	Search    string
-	Limit     int
-	Offset    int
+	TeacherID    *int64
+	ClassID      *int64
+	SubjectID    *int64
+	IsActive     *bool
+	Search       string
+	Limit        int
+	Offset       int
+	StudentID    *int64
+	StatusFilter *string
 }
 
 type HomeworkRepository interface {

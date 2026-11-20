@@ -97,36 +97,65 @@ func (r *HomeworkRepo) List(ctx context.Context, f repository.HomeworkFilter) ([
 	i := 1
 
 	if f.TeacherID != nil {
-		where = append(where, fmt.Sprintf("teacher_id = $%d", i))
+		where = append(where, fmt.Sprintf("hw.teacher_id = $%d", i))
 		args = append(args, *f.TeacherID)
 		i++
 	}
 	if f.ClassID != nil {
-		where = append(where, fmt.Sprintf("class_id = $%d", i))
+		where = append(where, fmt.Sprintf("hw.class_id = $%d", i))
 		args = append(args, *f.ClassID)
 		i++
 	}
 	if f.SubjectID != nil {
-		where = append(where, fmt.Sprintf("subject_id = $%d", i))
+		where = append(where, fmt.Sprintf("hw.subject_id = $%d", i))
 		args = append(args, *f.SubjectID)
 		i++
 	}
 	if f.IsActive != nil {
-		where = append(where, fmt.Sprintf("is_active = $%d", i))
+		where = append(where, fmt.Sprintf("hw.is_active = $%d", i))
 		args = append(args, *f.IsActive)
 		i++
 	}
 	if f.Search != "" {
-		where = append(where, fmt.Sprintf("(title ILIKE $%d OR description ILIKE $%d)", i, i))
+		where = append(where, fmt.Sprintf("(hw.title ILIKE $%d OR hw.description ILIKE $%d)", i, i))
 		args = append(args, "%"+f.Search+"%")
 		i++
 	}
 
-	query := `SELECT ` + homeworkColumns + `, COUNT(*) OVER() AS total_count FROM homework`
+	if f.StudentID != nil && f.StatusFilter != nil && *f.StatusFilter != "" {
+		switch *f.StatusFilter {
+		case "pending":
+			where = append(where, fmt.Sprintf(`(
+				NOT EXISTS (
+					SELECT 1 FROM homework_submissions s
+					WHERE s.homework_id = hw.id AND s.student_id = $%d
+				)
+				OR EXISTS (
+					SELECT 1 FROM homework_submissions s
+					WHERE s.homework_id = hw.id
+					  AND s.student_id = $%d
+					  AND s.status IN ('submitted', 'late')
+				)
+			)`, i, i))
+			args = append(args, *f.StudentID)
+			i++
+		case "graded":
+			where = append(where, fmt.Sprintf(`EXISTS (
+				SELECT 1 FROM homework_submissions s
+				WHERE s.homework_id = hw.id
+				  AND s.student_id = $%d
+				  AND s.status = 'graded'
+			)`, i))
+			args = append(args, *f.StudentID)
+			i++
+		}
+	}
+
+	query := `SELECT ` + homeworkColumns + `, COUNT(*) OVER() AS total_count FROM homework hw`
 	if len(where) > 0 {
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
-	query += " ORDER BY COALESCE(updated_at, created_at) DESC"
+	query += " ORDER BY COALESCE(hw.updated_at, hw.created_at) DESC"
 
 	if f.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT $%d", i)
@@ -169,7 +198,7 @@ func (r *HomeworkRepo) List(ctx context.Context, f repository.HomeworkFilter) ([
 	}
 
 	if total == 0 && len(results) == 0 {
-		cq := `SELECT COUNT(*) FROM homework`
+		cq := `SELECT COUNT(*) FROM homework hw`
 		if len(where) > 0 {
 			cq += " WHERE " + strings.Join(where, " AND ")
 		}
