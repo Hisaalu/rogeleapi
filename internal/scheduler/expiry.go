@@ -65,7 +65,7 @@ func (s *ExpiryScheduler) Run(ctx context.Context) {
 
 func (s *ExpiryScheduler) runOnce(ctx context.Context) {
 	s.sendSubscriptionReminders(ctx)
-	s.sendTrialReminders(ctx)
+	// s.sendTrialReminders(ctx)
 }
 
 func (s *ExpiryScheduler) sendSubscriptionReminders(ctx context.Context) {
