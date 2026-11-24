@@ -152,89 +152,89 @@ func (s *ExpiryScheduler) sendSubscriptionReminders(ctx context.Context) {
 	}
 }
 
-func (s *ExpiryScheduler) sendTrialReminders(ctx context.Context) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT t.id, t.user_id, t.end_date, u.email, u.first_name
-		FROM free_trials t
-		INNER JOIN users u ON u.id = t.user_id
-		WHERE t.notification_sent = false
-		  AND t.converted_to_subscriber = false
-		  AND t.end_date BETWEEN CURRENT_TIMESTAMP + INTERVAL '2 days'
-		                     AND CURRENT_TIMESTAMP + INTERVAL '3 days'
-	`)
-	if err != nil {
-		s.log.Error("trial reminder query", "error", err)
-		return
-	}
-	defer rows.Close()
+// func (s *ExpiryScheduler) sendTrialReminders(ctx context.Context) {
+// 	rows, err := s.db.QueryContext(ctx, `
+// 		SELECT t.id, t.user_id, t.end_date, u.email, u.first_name
+// 		FROM free_trials t
+// 		INNER JOIN users u ON u.id = t.user_id
+// 		WHERE t.notification_sent = false
+// 		  AND t.converted_to_subscriber = false
+// 		  AND t.end_date BETWEEN CURRENT_TIMESTAMP + INTERVAL '2 days'
+// 		                     AND CURRENT_TIMESTAMP + INTERVAL '3 days'
+// 	`)
+// 	if err != nil {
+// 		s.log.Error("trial reminder query", "error", err)
+// 		return
+// 	}
+// 	defer rows.Close()
 
-	type item struct {
-		trialID   int64
-		userID    int64
-		endDate   time.Time
-		email     string
-		firstName sql.NullString
-	}
+// 	type item struct {
+// 		trialID   int64
+// 		userID    int64
+// 		endDate   time.Time
+// 		email     string
+// 		firstName sql.NullString
+// 	}
 
-	var items []item
-	for rows.Next() {
-		var it item
-		if err := rows.Scan(&it.trialID, &it.userID, &it.endDate, &it.email, &it.firstName); err != nil {
-			s.log.Error("trial reminder scan", "error", err)
-			continue
-		}
-		items = append(items, it)
-	}
-	if err := rows.Err(); err != nil {
-		s.log.Error("trial reminder rows", "error", err)
-		return
-	}
+// 	var items []item
+// 	for rows.Next() {
+// 		var it item
+// 		if err := rows.Scan(&it.trialID, &it.userID, &it.endDate, &it.email, &it.firstName); err != nil {
+// 			s.log.Error("trial reminder scan", "error", err)
+// 			continue
+// 		}
+// 		items = append(items, it)
+// 	}
+// 	if err := rows.Err(); err != nil {
+// 		s.log.Error("trial reminder rows", "error", err)
+// 		return
+// 	}
 
-	for _, it := range items {
-		daysLeft := int(time.Until(it.endDate).Hours() / 24)
-		if daysLeft < 0 {
-			daysLeft = 0
-		}
+// 	for _, it := range items {
+// 		daysLeft := int(time.Until(it.endDate).Hours() / 24)
+// 		if daysLeft < 0 {
+// 			daysLeft = 0
+// 		}
 
-		name := "there"
-		if it.firstName.Valid && it.firstName.String != "" {
-			name = it.firstName.String
-		}
+// 		name := "there"
+// 		if it.firstName.Valid && it.firstName.String != "" {
+// 			name = it.firstName.String
+// 		}
 
-		vars := map[string]any{
-			"FirstName":     name,
-			"EndDate":       it.endDate.Format("January 2, 2006"),
-			"DaysLeft":      daysLeft,
-			"SubscribeLink": s.webURL + "/subscription",
-		}
+// 		vars := map[string]any{
+// 			"FirstName":     name,
+// 			"EndDate":       it.endDate.Format("January 2, 2006"),
+// 			"DaysLeft":      daysLeft,
+// 			"SubscribeLink": s.webURL + "/subscription",
+// 		}
 
-		var firstNamePtr *string
-		if it.firstName.Valid {
-			firstNamePtr = &it.firstName.String
-		}
+// 		var firstNamePtr *string
+// 		if it.firstName.Valid {
+// 			firstNamePtr = &it.firstName.String
+// 		}
 
-		if _, err := s.mailer.Enqueue(ctx, "trial_ending", it.email, firstNamePtr, vars); err != nil {
-			s.log.Warn("trial reminder enqueue failed", "trial_id", it.trialID, "error", err)
-			continue
-		}
+// 		if _, err := s.mailer.Enqueue(ctx, "trial_ending", it.email, firstNamePtr, vars); err != nil {
+// 			s.log.Warn("trial reminder enqueue failed", "trial_id", it.trialID, "error", err)
+// 			continue
+// 		}
 
-		if s.notifications != nil {
-			link := s.webURL + "/subscription"
-			title := "Trial ending soon"
-			msg := fmt.Sprintf("Your free trial ends in %d day(s). Subscribe to keep using the platform.", daysLeft)
-			_ = s.notifications.NotifyUser(ctx, it.userID, domain.NotificationTypeTrial, title, msg, &link)
-		}
+// 		if s.notifications != nil {
+// 			link := s.webURL + "/subscription"
+// 			title := "Trial ending soon"
+// 			msg := fmt.Sprintf("Your free trial ends in %d day(s). Subscribe to keep using the platform.", daysLeft)
+// 			_ = s.notifications.NotifyUser(ctx, it.userID, domain.NotificationTypeTrial, title, msg, &link)
+// 		}
 
-		if _, err := s.db.ExecContext(ctx,
-			`UPDATE free_trials SET notification_sent = true WHERE id = $1`, it.trialID); err != nil {
-			s.log.Warn("mark trial reminder sent", "trial_id", it.trialID, "error", err)
-		}
-	}
+// 		if _, err := s.db.ExecContext(ctx,
+// 			`UPDATE free_trials SET notification_sent = true WHERE id = $1`, it.trialID); err != nil {
+// 			s.log.Warn("mark trial reminder sent", "trial_id", it.trialID, "error", err)
+// 		}
+// 	}
 
-	if len(items) > 0 {
-		s.log.Info("trial reminders queued", "count", len(items))
-	}
-}
+// 	if len(items) > 0 {
+// 		s.log.Info("trial reminders queued", "count", len(items))
+// 	}
+// }
 
 func (s *ExpiryScheduler) RunQuizExpiry(ctx context.Context) {
 	ticker := time.NewTicker(2 * time.Minute)
