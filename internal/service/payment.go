@@ -116,8 +116,8 @@ func (s *PaymentService) Initiate(ctx context.Context, actor ActorContext, in In
 		Phone:      in.PhoneNumber,
 		ExternalID: externalID,
 		Reference:  reference,
-		PayerMsg:   "Rogele subscription",
-		PayeeMsg:   "Rogele",
+		PayerMsg:   "ROGELE subscription",
+		PayeeMsg:   "ROGELE",
 	})
 	if err != nil {
 		created.Status = domain.PaymentFailed
