@@ -458,7 +458,7 @@ func (s *PaymentService) calculateProratedAmount(
 	currentSub, err := s.subscriptions.GetMyActive(ctx, actor)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return amountToPay, nil // no active subscription → full price
+			return amountToPay, nil 
 		}
 		return 0, err
 	}
@@ -468,21 +468,16 @@ func (s *PaymentService) calculateProratedAmount(
 
 	now := time.Now()
 	if !currentSub.EndDate.After(now) {
-		return amountToPay, nil // subscription already expired → full price
+		return amountToPay, nil 
 	}
 
-	// currentSub.PlanType is a string enum ("monthly" / "termly" / "yearly").
-	// Look the plan up by name, not by parsing it as an int.
 	currentPlan, err := s.plans.FindPlanByName(ctx, string(currentSub.PlanType))
 	if err != nil || currentPlan == nil {
-		// Can't find the current plan. Fall back to full price rather than
-		// failing the whole flow.
 		s.log.Warn("proration: could not resolve current plan",
 			"plan_type", currentSub.PlanType, "error", err)
 		return amountToPay, nil
 	}
 
-	// Only prorate when upgrading to a more expensive plan.
 	if plan.Price <= currentPlan.Price {
 		return amountToPay, nil
 	}
