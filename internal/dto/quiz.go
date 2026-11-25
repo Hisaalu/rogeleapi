@@ -109,6 +109,8 @@ type AttemptResponse struct {
 	StudentLastName  *string        `json:"student_last_name,omitempty"`
 	StudentRegNo     *string        `json:"student_registration_number,omitempty"`
 	SavedAnswers     map[string]int `json:"saved_answers,omitempty"`
+
+	QuizTitle        *string        `json:"quiz_title,omitempty"`
 }
 
 type AttemptResultDetailsResponse struct {
@@ -179,6 +181,7 @@ func AttemptFromDomain(a *domain.QuizAttempt) AttemptResponse {
 		StudentFirstName: a.StudentFirstName,
 		StudentLastName:  a.StudentLastName,
 		StudentRegNo:     a.StudentRegNo,
+		QuizTitle:        a.QuizTitle,
 	}
 }
 

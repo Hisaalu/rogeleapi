@@ -62,6 +62,8 @@ type QuizAttempt struct {
 	StudentFirstName *string `json:"student_first_name,omitempty"`
 	StudentLastName  *string `json:"student_last_name,omitempty"`
 	StudentRegNo     *string `json:"student_registration_number,omitempty"`
+
+	QuizTitle        *string `json:"quiz_title,omitempty"`
 }
 
 type QuizAttemptAnswer struct {

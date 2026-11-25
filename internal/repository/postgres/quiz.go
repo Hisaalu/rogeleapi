@@ -333,7 +333,16 @@ func (r *QuizRepo) CountAttempts(ctx context.Context, quizID, userID int64) (int
 }
 
 func (r *QuizRepo) ListAttemptsByUser(ctx context.Context, userID int64) ([]*domain.QuizAttempt, error) {
-	query := `SELECT ` + attemptColumns + ` FROM quiz_attempts WHERE user_id = $1 ORDER BY started_at DESC`
+	query := `
+		SELECT 
+			a.id, a.quiz_id, a.user_id, a.score, a.total_questions, a.correct_answers,
+			a.time_taken, a.status, a.started_at, a.completed_at,
+			q.title AS quiz_title
+		FROM quiz_attempts a
+		LEFT JOIN quizzes q ON q.id = a.quiz_id
+		WHERE a.user_id = $1 
+		ORDER BY a.started_at DESC
+	`
 	rows, err := r.db.QueryContext(ctx, query, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list attempts: %w", err)
@@ -342,11 +351,57 @@ func (r *QuizRepo) ListAttemptsByUser(ctx context.Context, userID int64) ([]*dom
 
 	results := make([]*domain.QuizAttempt, 0, 16)
 	for rows.Next() {
-		a, err := scanAttemptRow(rows)
+		var (
+			a         domain.QuizAttempt
+			quizID    sql.NullInt64
+			userID    sql.NullInt64
+			score     sql.NullInt64
+			totalQs   sql.NullInt64
+			correct   sql.NullInt64
+			timeTaken sql.NullInt64
+			completed sql.NullTime
+			quizTitle sql.NullString 
+		)
+		
+		err := rows.Scan(
+			&a.ID, &quizID, &userID, &score, &totalQs, &correct,
+			&timeTaken, &a.Status, &a.StartedAt, &completed,
+			&quizTitle,
+		)
 		if err != nil {
 			return nil, err
 		}
-		results = append(results, a)
+		
+		if quizID.Valid {
+			a.QuizID = &quizID.Int64
+		}
+		if userID.Valid {
+			a.UserID = &userID.Int64
+		}
+		if score.Valid {
+			v := int(score.Int64)
+			a.Score = &v
+		}
+		if totalQs.Valid {
+			v := int(totalQs.Int64)
+			a.TotalQuestions = &v
+		}
+		if correct.Valid {
+			v := int(correct.Int64)
+			a.CorrectAnswers = &v
+		}
+		if timeTaken.Valid {
+			v := int(timeTaken.Int64)
+			a.TimeTaken = &v
+		}
+		if completed.Valid {
+			a.CompletedAt = &completed.Time
+		}
+		if quizTitle.Valid { 
+			a.QuizTitle = &quizTitle.String
+		}
+		
+		results = append(results, &a)
 	}
 	return results, rows.Err()
 }
