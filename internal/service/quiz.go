@@ -549,7 +549,54 @@ func (s *QuizService) SubmitAttempt(ctx context.Context, attemptID int64, actor 
 	if err := s.quizzes.UpdateAttempt(ctx, a); err != nil {
 		return nil, err
 	}
+
+	if q, qErr := s.quizzes.GetByID(ctx, *a.QuizID); qErr == nil && q != nil && q.TeacherID != nil {
+		s.notifyTeacherOfAttempt(ctx, q, actor, score, totalQuestions)
+	}
+
 	return s.quizzes.GetAttempt(ctx, attemptID)
+}
+
+func (s *QuizService) notifyTeacherOfAttempt(
+	ctx context.Context,
+	q *domain.Quiz,
+	actor ActorContext,
+	score, total int,
+) {
+	if s.notifications == nil || q.TeacherID == nil || *q.TeacherID == 0 {
+		return
+	}
+	if *q.TeacherID == actor.UserID {
+		return
+	}
+
+	learner, err := s.users.GetByID(ctx, actor.UserID)
+	if err != nil || learner == nil {
+		return
+	}
+
+	firstName := "A learner"
+	if learner.FirstName != nil && *learner.FirstName != "" {
+		firstName = *learner.FirstName
+	}
+
+	link := fmt.Sprintf("/teacher/quizzes/%d/results", q.ID)
+	title := "Quiz completed"
+	message := fmt.Sprintf(
+		"%s completed \"%s\" with a score of %d%% (%d questions)",
+		firstName, q.Title, score, total,
+	)
+
+	if err := s.notifications.NotifyUser(
+		ctx,
+		*q.TeacherID,
+		domain.NotificationTypeQuiz,
+		title,
+		message,
+		&link,
+	); err != nil {
+		_ = err
+	}
 }
 
 func (s *QuizService) ListMyAttempts(ctx context.Context, actor ActorContext) ([]*domain.QuizAttempt, error) {

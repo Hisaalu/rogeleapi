@@ -96,8 +96,52 @@ func (s *LessonService) GetByID(ctx context.Context, id int64, actor ActorContex
 	if actor.Role == domain.RoleLearner {
 		_ = s.lessons.IncrementViews(ctx, id)
 		s.activity.Log(ctx, actor.UserID, "lesson_view", l.Title)
+		s.notifyTeacherOfView(ctx, l, actor)
 	}
 	return l, nil
+}
+
+func (s *LessonService) notifyTeacherOfView(
+	ctx context.Context,
+	l *domain.Lesson,
+	actor ActorContext,
+) {
+	if s.notifications == nil || l.TeacherID == nil || *l.TeacherID == 0 {
+		return
+	}
+	if *l.TeacherID == actor.UserID {
+		return
+	}
+
+	learner, err := s.users.GetByID(ctx, actor.UserID)
+	if err != nil || learner == nil {
+		s.log.Warn("could not load learner for notification", "user_id", actor.UserID, "error", err)
+		return
+	}
+
+	firstName := "A learner"
+	if learner.FirstName != nil && *learner.FirstName != "" {
+		firstName = *learner.FirstName
+	}
+
+	link := fmt.Sprintf("/teacher/lessons/%d/preview", l.ID)
+	title := "Lesson viewed"
+	message := fmt.Sprintf("%s viewed \"%s\"", firstName, l.Title)
+
+	if err := s.notifications.NotifyUser(
+		ctx,
+		*l.TeacherID,
+		domain.NotificationTypeLesson,
+		title,
+		message,
+		&link,
+	); err != nil {
+		s.log.Warn("failed to notify teacher of lesson view",
+			"teacher_id", *l.TeacherID,
+			"lesson_id", l.ID,
+			"error", err,
+		)
+	}
 }
 
 func (s *LessonService) List(ctx context.Context, actor ActorContext, f repository.LessonFilter) ([]*domain.Lesson, error) {

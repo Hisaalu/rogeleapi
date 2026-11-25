@@ -316,6 +316,8 @@ func (s *HomeworkService) Submit(ctx context.Context, homeworkID int64, actor Ac
 	now := time.Now().UTC()
 	dueDate := hw.DueDate.UTC()
 
+	isNewSubmission := false
+
 	existing, err := s.repo.GetSubmission(ctx, homeworkID, actor.UserID)
 	if err == nil && existing != nil {
 		if string(existing.Status) == "graded" {
@@ -333,7 +335,12 @@ func (s *HomeworkService) Submit(ctx context.Context, homeworkID int64, actor Ac
 		if err := s.repo.UpdateSubmission(ctx, existing); err != nil {
 			return nil, err
 		}
-		return s.repo.GetSubmissionByID(ctx, existing.ID)
+		updated, err := s.repo.GetSubmissionByID(ctx, existing.ID)
+		if err != nil {
+			return nil, err
+		}
+		s.notifyTeacherOfSubmission(ctx, hw, actor)
+		return updated, nil
 	}
 
 	if err != nil && err != domain.ErrNotFound {
@@ -353,7 +360,57 @@ func (s *HomeworkService) Submit(ctx context.Context, homeworkID int64, actor Ac
 		SubmittedAt: &now,
 	}
 
-	return s.repo.CreateSubmission(ctx, sub)
+	created, err := s.repo.CreateSubmission(ctx, sub)
+	if err != nil {
+		return nil, err
+	}
+	_ = isNewSubmission 
+	_ = created
+	s.notifyTeacherOfSubmission(ctx, hw, actor)
+	return created, nil
+}
+
+func (s *HomeworkService) notifyTeacherOfSubmission(
+	ctx context.Context,
+	hw *domain.Homework,
+	actor ActorContext,
+) {
+	if s.notifications == nil || hw.TeacherID == 0 {
+		return
+	}
+	if hw.TeacherID == actor.UserID {
+		return 
+	}
+
+	learner, err := s.users.GetByID(ctx, actor.UserID)
+	if err != nil || learner == nil {
+		s.log.Warn("could not load learner for notification", "user_id", actor.UserID, "error", err)
+		return
+	}
+
+	firstName := "A learner"
+	if learner.FirstName != nil && *learner.FirstName != "" {
+		firstName = *learner.FirstName
+	}
+
+	link := fmt.Sprintf("/teacher/homework/%d/submissions", hw.ID)
+	title := "Homework submitted"
+	message := fmt.Sprintf("%s submitted \"%s\"", firstName, hw.Title)
+
+	if err := s.notifications.NotifyUser(
+		ctx,
+		hw.TeacherID,
+		domain.NotificationTypeHomework,
+		title,
+		message,
+		&link,
+	); err != nil {
+		s.log.Warn("failed to notify teacher of homework submission",
+			"teacher_id", hw.TeacherID,
+			"homework_id", hw.ID,
+			"error", err,
+		)
+	}
 }
 
 func (s *HomeworkService) GradeSubmission(ctx context.Context, submissionID int64, actor ActorContext, grade float64, feedback string) (*domain.HomeworkSubmission, error) {
