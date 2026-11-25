@@ -438,7 +438,7 @@ func (s *QuizService) StartAttempt(ctx context.Context, quizID int64, actor Acto
 		Status:    domain.QuizAttemptInProgress,
 		StartedAt: time.Now().UTC(),
 	}
-	s.activity.Log(ctx, actor.UserID, "quiz_attempt", fmt.Sprintf("quiz #%d", quizID))
+	s.activity.Log(ctx, actor.UserID, "quiz_attempt", fmt.Sprintf("Started quiz: %s", q.Title))
 	return s.quizzes.CreateAttempt(ctx, attempt)
 }
 

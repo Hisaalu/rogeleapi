@@ -339,6 +339,7 @@ func (s *HomeworkService) Submit(ctx context.Context, homeworkID int64, actor Ac
 		if err != nil {
 			return nil, err
 		}
+		s.activity.Log(ctx, actor.UserID, "homework_submit", fmt.Sprintf("Resubmitted: %s", hw.Title))
 		s.notifyTeacherOfSubmission(ctx, hw, actor)
 		return updated, nil
 	}
@@ -366,6 +367,7 @@ func (s *HomeworkService) Submit(ctx context.Context, homeworkID int64, actor Ac
 	}
 	_ = isNewSubmission 
 	_ = created
+	s.activity.Log(ctx, actor.UserID, "homework_submit", fmt.Sprintf("Submitted: %s", hw.Title))
 	s.notifyTeacherOfSubmission(ctx, hw, actor)
 	return created, nil
 }
