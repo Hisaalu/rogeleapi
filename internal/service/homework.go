@@ -446,7 +446,43 @@ func (s *HomeworkService) GradeSubmission(ctx context.Context, submissionID int6
 	if err := s.repo.UpdateSubmission(ctx, sub); err != nil {
 		return nil, err
 	}
+
+	s.notifyLearnerOfGrade(ctx, hw, sub)
+
 	return s.repo.GetSubmissionByID(ctx, submissionID)
+}
+
+func (s *HomeworkService) notifyLearnerOfGrade(
+	ctx context.Context,
+	hw *domain.Homework,
+	sub *domain.HomeworkSubmission,
+) {
+	if s.notifications == nil || sub.StudentID == 0 || sub.Grade == nil {
+		return
+	}
+
+	link := fmt.Sprintf("/learner/homework/%d", hw.ID)
+	title := "Homework marked"
+	message := fmt.Sprintf(
+		"Homework for \"%s\" has been marked: %d%%",
+		hw.Title,
+		int(*sub.Grade),
+	)
+
+	if err := s.notifications.NotifyUser(
+		ctx,
+		sub.StudentID,
+		domain.NotificationTypeHomework,
+		title,
+		message,
+		&link,
+	); err != nil {
+		s.log.Warn("failed to notify learner of grade",
+			"student_id", sub.StudentID,
+			"homework_id", hw.ID,
+			"error", err,
+		)
+	}
 }
 
 func (s *HomeworkService) DeleteSubmission(ctx context.Context, submissionID int64, actor ActorContext) error {
